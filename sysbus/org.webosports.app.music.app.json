@@ -1,0 +1,15 @@
+{
+    "appId": "org.webosports.app.music",
+    "type": "regular",
+    "allowedNames": ["org.webosports.app.music", "org.webosports.app.music-*"],
+    "permissions": [
+        {
+            "service": "org.webosports.app.music",
+            "outbound": ["*"]
+        },
+        {
+            "service": "org.webosports.app.music-*",
+            "outbound": ["*"]
+        }
+    ]
+}

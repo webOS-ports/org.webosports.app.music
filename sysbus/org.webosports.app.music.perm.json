@@ -1,0 +1,4 @@
+{
+    "org.webosports.app.music": [ "application.operation", "database.operation", "sleep.operation", "systemsettings.query", "notification.operation" ],
+    "org.webosports.app.music-*": [ "application.operation", "database.operation", "sleep.operation", "systemsettings.query", "notification.operation" ]
+}

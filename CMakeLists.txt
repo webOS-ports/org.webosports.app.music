@@ -33,3 +33,11 @@ message(STATUS "APP_DIR=${APP_DIR}")
 
 install(FILES appinfo.json icon.png icon-256x256.png DESTINATION ${APP_DIR})
 
+# luna-service2: the app's bus name and the groups it calls - db8 (the
+# library, playlists, play counts), sleepd (stay awake while playing) and
+# the system settings (the clock's 12/24 hours).
+configure_file(sysbus/${APP_ID}.manifest.json.in ${CMAKE_BINARY_DIR}/${APP_ID}.manifest.json @ONLY)
+install(FILES sysbus/${APP_ID}.app.json DESTINATION share/luna-service2/roles.d)
+install(FILES ${CMAKE_BINARY_DIR}/${APP_ID}.manifest.json DESTINATION share/luna-service2/manifests.d)
+install(FILES sysbus/${APP_ID}.perm.json DESTINATION share/luna-service2/client-permissions.d)
+
