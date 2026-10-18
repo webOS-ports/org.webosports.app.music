@@ -234,6 +234,34 @@ Item {
             player.failed.disconnect(onFailed);
         }
 
+        // Jamendo's shared client id is refused now and then: the same
+        // track picked again is tried again, and says so when it fails
+        // again rather than doing nothing.
+        function test_track_that_failed_can_be_picked_again() {
+            var attempts = 0;
+            root.answers["POST /provider/jamendo/resolve"] = function(body) {
+                attempts++;
+                if (attempts <= 2)
+                    return [502, { error: "jamendo: no audio for " + body.trackId }];
+                return [200, { url: fileUrl("Various/Summer Mix/01 Ana Ray - Sun.ogg") }];
+            };
+            var failed = [];
+            var onFailed = function(track, reason) { failed.push(reason); };
+            player.failed.connect(onFailed);
+            var track = { path: "jamendo:flaky", title: "Flaky", remote: true };
+            player.playTracks([track], 0, false);
+            tryCompare(failed, "length", 1, 5000);
+            verify(!player.playing);
+            player.playTracks([track], 0, false);
+            tryCompare(failed, "length", 2, 5000);
+            compare(failed[1], "jamendo: no audio for flaky");
+            player.playTracks([track], 0, false);
+            tryVerify(function() { return player.playing && player.active.path === "jamendo:flaky"; }, 5000);
+            compare(attempts, 3);
+            player.failed.disconnect(onFailed);
+            player.pause();
+        }
+
         function test_spotify_goes_through_librespot() {
             root.answers["POST /player/load"] = [200, { ok: true, duration_ms: 200000 }];
             root.answers["POST /player/pause"] = [200, { ok: true }];

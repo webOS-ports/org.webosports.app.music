@@ -152,6 +152,9 @@ Item {
         state.repeat = queue.repeat;
         _set(state);
         _failures = 0;
+        // Picked again after it failed (a stream that did not resolve the
+        // first time): a real attempt, not the remembered failure.
+        _failedPath = "";
         _startCurrent(true, 0);
     }
 
@@ -159,6 +162,7 @@ Item {
         if (!current)
             return;
         if (active.path !== current.path) {
+            _failedPath = "";
             _startCurrent(true, _pendingSeek > 0 ? _pendingSeek : 0);
             return;
         }
@@ -207,6 +211,7 @@ Item {
     function jumpTo(pos) {
         if (pos < 0 || pos >= count)
             return;
+        _failedPath = "";
         _goTo(pos, false);
     }
 
