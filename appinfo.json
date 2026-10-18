@@ -13,106 +13,51 @@
     "splashicon": "icon-256x256.png",
     "uiRevision": "2",
     "exhibitionMode": true,
-    "exhibitionModeOptions": {
-        "title": "Now Playing"
-    },
-    "requiredPermissions": [
-        "application.operation",
-        "database.operation",
-        "sleep.operation",
-        "systemsettings.query",
-        "notification.operation"
-    ],
-    "mimeTypes": [
-        {
-            "mime": "audio/mpeg",
-            "extension": "mp3"
+    "exhibitionModeOptions": { "title": "Now Playing" },
+    "universalSearch": {
+        "action": {
+            "displayName": "Search Music",
+            "launchParam": "search",
+            "url": "org.webosports.app.music"
         },
-        {
-            "mime": "audio/mp4",
-            "extension": "m4a"
-        },
-        {
-            "mime": "audio/x-m4a"
-        },
-        {
-            "mime": "audio/mp4",
-            "extension": "m4b"
-        },
-        {
-            "mime": "audio/aac",
-            "extension": "aac"
-        },
-        {
-            "mime": "audio/flac",
-            "extension": "flac"
-        },
-        {
-            "mime": "audio/x-flac"
-        },
-        {
-            "mime": "audio/ogg",
-            "extension": "ogg"
-        },
-        {
-            "mime": "audio/ogg",
-            "extension": "oga"
-        },
-        {
-            "mime": "audio/opus",
-            "extension": "opus"
-        },
-        {
-            "mime": "audio/x-wav",
-            "extension": "wav"
-        },
-        {
-            "mime": "audio/wav"
-        },
-        {
-            "mime": "audio/x-ms-wma",
-            "extension": "wma"
-        },
-        {
-            "mime": "audio/x-aiff",
-            "extension": "aiff"
-        },
-        {
-            "mime": "audio/x-ape",
-            "extension": "ape"
-        },
-        {
-            "mime": "audio/x-wavpack",
-            "extension": "wv"
-        },
-        {
-            "mime": "audio/x-matroska",
-            "extension": "mka"
-        },
-        {
-            "mime": "audio/x-mpegurl",
-            "extension": "m3u"
-        },
-        {
-            "mime": "audio/mpegurl",
-            "extension": "m3u8"
-        },
-        {
-            "mime": "audio/x-scpls",
-            "extension": "pls"
+        "dbsearch": {
+            "displayName": "Songs",
+            "url": "org.webosports.app.music",
+            "launchParam": "target",
+            "launchParamDbField": "path",
+            "displayFields": [ "title", "artist" ],
+            "dbQuery": {
+                "from": "com.palm.media.audio.file:1",
+                "where": [
+                    { "prop": "isRingtone", "op": "=", "val": false },
+                    { "prop": "searchKey", "op": "?", "val": "", "collate": "primary" }
+                ],
+                "limit": 20
+            }
         }
+    },
+    "requiredPermissions": [ "accountsservice.operation", "application.operation", "database.operation", "sleep.operation", "systemsettings.query", "notification.operation" ],
+    "mimeTypes": [
+        { "mime": "audio/mpeg", "extension": "mp3" },
+        { "mime": "audio/mp4", "extension": "m4a" },
+        { "mime": "audio/x-m4a" },
+        { "mime": "audio/mp4", "extension": "m4b" },
+        { "mime": "audio/aac", "extension": "aac" },
+        { "mime": "audio/flac", "extension": "flac" },
+        { "mime": "audio/x-flac" },
+        { "mime": "audio/ogg", "extension": "ogg" },
+        { "mime": "audio/ogg", "extension": "oga" },
+        { "mime": "audio/opus", "extension": "opus" },
+        { "mime": "audio/x-wav", "extension": "wav" },
+        { "mime": "audio/wav" },
+        { "mime": "audio/x-ms-wma", "extension": "wma" },
+        { "mime": "audio/x-aiff", "extension": "aiff" },
+        { "mime": "audio/x-ape", "extension": "ape" },
+        { "mime": "audio/x-wavpack", "extension": "wv" },
+        { "mime": "audio/x-matroska", "extension": "mka" },
+        { "mime": "audio/x-mpegurl", "extension": "m3u" },
+        { "mime": "audio/mpegurl", "extension": "m3u8" },
+        { "mime": "audio/x-scpls", "extension": "pls" }
     ],
-    "keywords": [
-        "Music",
-        "Music Player",
-        "Songs",
-        "Albums",
-        "Artists",
-        "Playlists",
-        "Audio",
-        "MP3",
-        "FLAC",
-        "Player",
-        "Now Playing"
-    ]
+    "keywords": [ "Music", "Music Player", "Songs", "Albums", "Artists", "Playlists", "Audio", "MP3", "FLAC", "Player", "Now Playing" ]
 }
