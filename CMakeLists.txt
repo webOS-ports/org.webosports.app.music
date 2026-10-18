@@ -32,6 +32,7 @@ set(PLUGIN_DIR ${APP_DIR}/MusicApp)
 message(STATUS "APP_DIR=${APP_DIR}")
 
 install(FILES appinfo.json icon.png icon-256x256.png DESTINATION ${APP_DIR})
+install(DIRECTORY qml DESTINATION ${APP_DIR})
 
 # luna-service2: the app's bus name and the groups it calls - db8 (the
 # library, playlists, play counts), sleepd (stay awake while playing) and
