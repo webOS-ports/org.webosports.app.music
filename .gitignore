@@ -1,0 +1,11 @@
+# build trees and test output
+build/
+/build-*/
+
+# editor / OS
+.DS_Store
+*.swp
+*~
+
+# tooling
+.claude/
