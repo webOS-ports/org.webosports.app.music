@@ -41,3 +41,5 @@ install(FILES sysbus/${APP_ID}.app.json DESTINATION share/luna-service2/roles.d)
 install(FILES ${CMAKE_BINARY_DIR}/${APP_ID}.manifest.json DESTINATION share/luna-service2/manifests.d)
 install(FILES sysbus/${APP_ID}.perm.json DESTINATION share/luna-service2/client-permissions.d)
 
+add_subdirectory(MusicApp)
+
