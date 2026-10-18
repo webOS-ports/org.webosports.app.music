@@ -39,8 +39,7 @@ tests/README.md for every test and check.
 - Toasts must be `type: "light"`, or the shell keeps an entry for each.
 - The exhibition carousel launches the app with
   `{"windowType":"dockModeWindow","dockMode":true}` and takes its dock window
-  (needs luna-next-cardshell herrie/exhibition-dock-window when the card is
-  open too).
+  (a card shell that prefers the dock window over the open card).
 - No MPRIS or media keys in the shell; the dashboard is a floating window.
 - Streaming goes through luneos-synergy-music (luneos-synergy-connectors
   music/_core/service): `/providers`, `/provider/<id>/search`,
@@ -48,9 +47,11 @@ tests/README.md for every test and check.
   Spotify's librespot. A service counts only when its Synergy account
   (template org.webosports.app.music.<id>) exists: `listAccounts` (needs
   `accountsservice.operation`; `listAccountsPublic` is denied to apps).
-- Just Type providers in appinfo.json are not registered on current images
-  (luna-universalsearchmgr lists none, not even Calendar's) without
-  luna-universalsearchmgr `herrie/justtype-app-providers`.
+- Just Type providers in appinfo.json are only registered by a
+  luna-universalsearchmgr that reads apps' providers from SAM (older images
+  list none, not even Calendar's).
+- db8 goes through LuneOS.Service's `Db8Model` (all pages, db8's error
+  codes, put/merge/del/putKind): no app-local db8 helper.
 - Eos.Window 0.1 on the devices has no `onClosing` (the desktop stand-in
   does): a handler for it makes main.qml fail to load.
 - /media/internal is vfat on some devices (the TouchPad): `music` and
