@@ -44,3 +44,8 @@ install(FILES sysbus/${APP_ID}.perm.json DESTINATION share/luna-service2/client-
 
 add_subdirectory(MusicApp)
 
+option(BUILD_TESTING "Build the unit tests" OFF)
+if(BUILD_TESTING)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
