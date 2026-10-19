@@ -199,6 +199,42 @@ Item {
             verify(err !== "");
         }
 
+        // The user's playlists on the services that have any, asked once per
+        // refresh; a playlist's tracks become the app's tracks.
+        function test_service_playlists() {
+            root.answers["GET /providers"] = [200, { providers: [{ id: "spotify", name: "Spotify" }, { id: "jamendo", name: "Jamendo" }] }];
+            root.answers["GET /provider/spotify/playlists"] = [200, { playlists: [
+                { id: "p1", name: "Road", owner: "me", thumbnail: "https://i/1", tracks: 2 },
+                { name: "no id" }] }];
+            root.answers["GET /provider/jamendo/playlists"] = [409, { error: "jamendo has no playlists to share" }];
+            root.answers["GET /provider/spotify/playlist"] = function(body, path) {
+                verify(path.indexOf("id=p1") > 0, path);
+                return [200, { tracks: [{ id: "t1", provider: "spotify", title: "One", artist: "A", album: "Al",
+                                          duration_ms: 61000, path: "spotify:track:t1", thumbnail: "https://i/t" }] }];
+            };
+            store.refresh();
+            tryVerify(function() { return store.servicePlaylists.length === 1; });
+            compare(store.servicePlaylists[0].provider, "spotify");
+            compare(store.servicePlaylists[0].name, "Spotify");
+            compare(store.servicePlaylists[0].playlists.length, 1);
+            compare(store.servicePlaylists[0].playlists[0].name, "Road");
+            wait(50);
+            var asked = root.calls.filter(function(c) { return c.path === "/provider/spotify/playlists"; }).length;
+            compare(asked, 1);
+            var got = null;
+            store.playlistTracks("spotify", "p1", function(tracks, error) { got = { tracks: tracks, error: error }; });
+            tryVerify(function() { return got !== null; });
+            compare(got.error, "");
+            compare(got.tracks.length, 1);
+            compare(got.tracks[0].path, "spotify:track:t1");
+            verify(got.tracks[0].remote);
+            compare(got.tracks[0].duration, 61000);
+            // Signed out of everything: no playlists left.
+            root.answers["GET /providers"] = [200, { providers: [] }];
+            store.refresh();
+            tryVerify(function() { return store.servicePlaylists.length === 0; });
+        }
+
         // The format asked for, else the service's preferred one, goes to
         // the service; the ones it has come back.
         function test_resolve_formats() {

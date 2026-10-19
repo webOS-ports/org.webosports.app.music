@@ -45,6 +45,8 @@ Item {
     property var albums: []
     // The user playlist this is, for editing; "" for none.
     property string playlistId: ""
+    // The songs are still on their way (a streaming service's playlist).
+    property bool loading: false
     property bool editing: false
     // Shown in the header's "…": [{ text, action }].
     property var actions: []
@@ -293,5 +295,12 @@ Item {
                 }
             }
         }
+    }
+
+    BusyIndicator {
+        objectName: "trackListBusy"
+        anchors.centerIn: parent
+        running: page.loading
+        visible: page.loading
     }
 }

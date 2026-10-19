@@ -93,6 +93,8 @@ Tablet (TouchPad, 1024x768):
   and 96, YouTube's AAC and Opus), Now Playing shows the one playing under
   the seek bar; a tap offers the others, switches where the track is, and
   keeps the choice for that service's next tracks.
+- Your playlists on a service (Spotify for now) are listed in Playlists
+  under your own, as they are there, and play like the service's tracks.
 - Streamed tracks queue, favourite and go into playlists like files (a
   playlist keeps their title and cover); the queue keeps them across
   restarts.
