@@ -482,7 +482,11 @@ WebOSWindow {
 
     // --- dashboard -------------------------------------------------------------------
 
-    readonly property bool cardActive: Qt.application.state === Qt.ApplicationActive
+    // The card in front - the card window, not the application: touching or
+    // swiping the dashboard makes the application active too (its window takes
+    // the focus), and taking that for the card dropped the dashboard before the
+    // shell's close could reach it, the music playing on.
+    readonly property bool cardActive: appWindow.active
     // Back in front: an account may have been added or removed meanwhile.
     onCardActiveChanged: if (cardActive) streaming.refresh()
 
