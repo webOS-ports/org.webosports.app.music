@@ -39,6 +39,7 @@ Item {
     readonly property alias duration: media.duration
     readonly property alias seekable: media.seekable
     readonly property alias errorString: media.errorString
+    readonly property alias source: media.source
     readonly property bool isPlaying: media.playbackState === MediaPlayer.PlayingState
     readonly property bool loaded: media.mediaStatus === MediaPlayer.LoadedMedia
                                    || media.mediaStatus === MediaPlayer.BufferedMedia

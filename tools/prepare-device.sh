@@ -1,31 +1,45 @@
 #!/bin/bash
-# Gets a device ready for a development build of Music, ahead of the
-# recipes that will do it for real:
+# Gets a device ready for a development build of Music, ahead of an image
+# that has it all:
 #
-# - luneos-components' ActionSheet, FastScroller and ConfirmDialog
-#   (branch herrie/music-shared-parts) into the device's LuneOS.Components;
-# - the media indexer's read grant for the app on com.palm.media.audio.file
-#   (mediaindexer branch herrie/music-read-grant), applied by the
-#   configurator, so the app reads the library without the permission
-#   alert.
+# - luneos-components' ActionSheet, FastScroller and ConfirmDialog into the
+#   device's LuneOS.Components;
+# - with --service-plugin, a LuneOS.Service plugin built for the device
+#   (Db8Model with all pages, db8's errors and the writing calls);
+# - the media indexer's read grant for the app on com.palm.media.audio.file,
+#   applied by the configurator, so the app reads the library without the
+#   permission alert.
 #
 # The files it replaces are kept in /media/internal/.music-dev-backup on the
-# device; tools/prepare-device.sh <serial> --restore puts them back.
+# device; --restore puts them back.
 #
-#   tools/prepare-device.sh <adb serial> <luneos-components checkout> <mediaindexer checkout> [--restore]
+#   tools/prepare-device.sh <adb serial> <luneos-components checkout> <mediaindexer checkout>
+#       [--service-plugin <libLuneOSService.so>] [--restore]
 set -e
-SERIAL=${1:?usage: prepare-device.sh <serial> <luneos-components> <mediaindexer> [--restore]}
+SERIAL=${1:?usage: prepare-device.sh <serial> <luneos-components> <mediaindexer> [--service-plugin <so>] [--restore]}
 LC=${2:?}
 MI=${3:?}
+shift 3
+PLUGIN=""
+RESTORE=""
+while [ $# -gt 0 ]; do
+    case $1 in
+    --service-plugin) PLUGIN=${2:?}; shift 2 ;;
+    --restore) RESTORE=1; shift ;;
+    *) echo "unknown option $1"; exit 1 ;;
+    esac
+done
 ADB="adb -s $SERIAL"
 sh_() { $ADB shell "$1" | tr -d '\r'; }
 COMP=$(sh_ 'dirname $(find /usr/lib -path "*LuneOS/Components/qmldir" | head -n 1)')
+SERV=$(dirname "$COMP")/Service
 PERM=/etc/palm/db/permissions/com.palm.media.audio.file
 BACKUP=/media/internal/.music-dev-backup
 [ -n "$COMP" ] || { echo "no LuneOS.Components on the device"; exit 1; }
 
-if [ "$4" = "--restore" ]; then
+if [ -n "$RESTORE" ]; then
     sh_ "mount -o remount,rw / 2>/dev/null; cp $BACKUP/qmldir $BACKUP/ConfirmDialog.qml $COMP/ && rm -f $COMP/ActionSheet.qml $COMP/FastScroller.qml && cp $BACKUP/com.palm.media.audio.file $PERM && luna-send -n 1 -w 20000 luna://com.palm.configurator/run '{\"types\":[\"dbpermissions\"]}' > /dev/null 2>&1; echo restored"
+    sh_ "[ -f $BACKUP/libLuneOSService.so ] && cp $BACKUP/libLuneOSService.so $SERV/.libLuneOSService.so.new && mv $SERV/.libLuneOSService.so.new $SERV/libLuneOSService.so && echo 'LuneOS.Service plugin restored'; true"
     exit 0
 fi
 
@@ -48,6 +62,14 @@ sh_ "mount -o remount,rw / 2>/dev/null; true"
 for f in ActionSheet.qml FastScroller.qml ConfirmDialog.qml qmldir; do
     $ADB push "$LC/modules/LuneOS/Components/$f" "$COMP/$f" > /dev/null
 done
+if [ -n "$PLUGIN" ]; then
+    sh_ "[ -f $BACKUP/libLuneOSService.so ] || cp $SERV/libLuneOSService.so $BACKUP/"
+    # Pushed beside it and renamed: running apps keep the file they have
+    # mapped, instead of seeing it rewritten under them.
+    $ADB push "$PLUGIN" "$SERV/.libLuneOSService.so.new" > /dev/null
+    sh_ "mv $SERV/.libLuneOSService.so.new $SERV/libLuneOSService.so"
+    echo "LuneOS.Service plugin in $SERV replaced (apps started from now on load it)"
+fi
 $ADB push "$MI/files/db8/permissions/com.palm.media.audio.file" "$PERM" > /dev/null
 # The configurator processes changed files only; its stamp for this one goes.
 sh_ "rm -f /var/cache/configurator/_etc_palm_db_permissions_com.palm.media.audio.file; luna-send -n 1 -w 20000 luna://com.palm.configurator/run '{\"types\":[\"dbpermissions\"]}' > /tmp/music-conf.out 2>&1; cat /tmp/music-conf.out"

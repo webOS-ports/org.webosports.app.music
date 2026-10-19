@@ -40,10 +40,16 @@ Rectangle {
     property var sleepTimer
     property bool showLyrics: false
     property string lyricsText: ""
+    // Where they came from: "" the song itself (tags, .lrc), "LRCLIB" looked up.
+    property string lyricsSource: ""
+    // "searching", "found", "instrumental" or "none".
+    property string lyricsStatus: "none"
 
     signal closeRequested()
 
     readonly property var track: player ? player.current : null
+    // { format, formats } of a streamed track whose service has a choice.
+    readonly property var format: player ? player.currentFormat : null
     readonly property bool landscape: width >= height
     readonly property bool favorite: track !== null && stats.revision >= 0 && stats.isFavorite(track.path)
 
@@ -52,8 +58,28 @@ Rectangle {
     onTrackChanged: if (showLyrics) loadLyrics()
     onShowLyricsChanged: if (showLyrics) loadLyrics()
 
+    // The song's own lyrics; failing those, LRCLIB's (LyricsLookup).
     function loadLyrics() {
-        lyricsText = track ? (appWindow.library.tagReader.read(track.path).lyrics || "") : "";
+        var t = track;
+        var own = t && !t.remote ? (appWindow.library.tagReader.read(t.path).lyrics || "") : "";
+        lyricsText = own;
+        lyricsSource = "";
+        lyricsStatus = own !== "" ? "found" : "none";
+        if (own !== "" || !t || !appWindow.lyricsLookup.enabled)
+            return;
+        lyricsStatus = "searching";
+        appWindow.lyricsLookup.find(t, function(result) {
+            // Another song by the time the answer came.
+            if (!np.track || np.track.path !== t.path)
+                return;
+            if (!result) {
+                np.lyricsStatus = "none";
+                return;
+            }
+            np.lyricsText = result.text;
+            np.lyricsSource = result.instrumental ? "" : "LRCLIB";
+            np.lyricsStatus = result.instrumental ? "instrumental" : "found";
+        });
     }
 
     // The cover, blurred by scaling a tiny copy up, behind everything.
@@ -236,6 +262,9 @@ Rectangle {
             visible: np.showLyrics
             theme: np.theme
             text: np.lyricsText
+            source: np.lyricsSource
+            status: np.lyricsStatus
+            ownOnly: !(np.track && np.track.remote) && !appWindow.lyricsLookup.enabled
             position: np.player ? np.player.position : 0
             onSeekRequested: function(ms) { np.player.seek(ms); }
         }
@@ -314,6 +343,50 @@ Rectangle {
             duration: np.player ? np.player.duration : 0
             textColor: np.theme.darkSecondaryText
             onSeekRequested: function(ms) { np.player.seek(ms); }
+
+            // The streamed track's format, between the times; a tap offers
+            // the others when there are any.
+            Rectangle {
+                id: formatBadge
+                objectName: "formatBadge"
+                readonly property bool switchable: !!(np.format && np.format.formats.length > 1)
+                visible: np.format !== null
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.bottom: parent.bottom
+                width: formatRow.implicitWidth + Units.gu(1.6)
+                height: formatText.implicitHeight + Units.gu(0.4)
+                radius: height / 2
+                color: "transparent"
+                border.width: 1
+                border.color: switchable ? np.theme.accent : np.theme.darkSecondaryText
+                Row {
+                    id: formatRow
+                    anchors.centerIn: parent
+                    spacing: Units.gu(0.3)
+                    Text {
+                        id: formatText
+                        objectName: "formatText"
+                        text: np.format ? np.format.format : ""
+                        color: formatBadge.switchable ? np.theme.darkText : np.theme.darkSecondaryText
+                        font.pixelSize: np.theme.fontTiny
+                    }
+                    // The device fonts have no ▾.
+                    Image {
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: formatBadge.switchable
+                        source: Qt.resolvedUrl("images/down.svg")
+                        sourceSize.width: formatText.font.pixelSize
+                        sourceSize.height: formatText.font.pixelSize
+                    }
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    // A finger-sized target around the small badge.
+                    anchors.margins: -Units.gu(1)
+                    enabled: formatBadge.switchable
+                    onClicked: appWindow.chooseFormat()
+                }
+            }
         }
 
         Row {

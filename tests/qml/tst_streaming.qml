@@ -57,7 +57,7 @@ Item {
     Player {
         id: player
         replayGain: "off"
-        urlResolver: function(track, done) { store.resolve(track, done); }
+        urlResolver: function(track, done, format) { store.resolve(track, done, format); }
         streamingTransport: root.fakeTransport
     }
 
@@ -106,6 +106,19 @@ Item {
             // Accounts could not be asked: the daemon's list stands.
             compare(Streaming.signedIn(daemon, null).length, 4);
             compare(Streaming.signedIn(null, accounts).length, 0);
+        }
+
+        function test_formats() {
+            compare(Streaming.formats(null), null);
+            compare(Streaming.formats({ url: "u" }), null);
+            compare(Streaming.formats({ url: "u", format: "" }), null);
+            compare(Streaming.formats({ url: "u", format: "AAC 160", formats: ["AAC 160", "AAC 96"] }),
+                    { format: "AAC 160", formats: ["AAC 160", "AAC 96"] });
+            // The one playing is always among them; junk is left out.
+            compare(Streaming.formats({ url: "u", format: "MP3 128", formats: ["AAC 96", "", 7] }),
+                    { format: "MP3 128", formats: ["MP3 128", "AAC 96"] });
+            compare(Streaming.formats({ url: "u", format: "OPUS 160" }),
+                    { format: "OPUS 160", formats: ["OPUS 160"] });
         }
 
         function test_stored() {
@@ -185,6 +198,38 @@ Item {
             store.resolve({ path: "/local.mp3" }, function(u, e) { err = e; });
             verify(err !== "");
         }
+
+        // The format asked for, else the service's preferred one, goes to
+        // the service; the ones it has come back.
+        function test_resolve_formats() {
+            var asked = [];
+            root.answers["POST /provider/soundcloud/resolve"] = function(body) {
+                asked.push(body.format === undefined ? "none" : body.format);
+                return [200, { url: "https://cdn/" + body.trackId, format: body.format || "AAC 160",
+                               formats: ["AAC 160", "AAC 96"] }];
+            };
+            var got = null;
+            store.preferredFormats = {};
+            store.resolve({ path: "soundcloud:5" }, function(u, e, f) { got = f; });
+            tryVerify(function() { return got !== null; });
+            compare(got, { format: "AAC 160", formats: ["AAC 160", "AAC 96"] });
+            store.preferredFormats = { soundcloud: "AAC 96", youtube: "OPUS 160" };
+            got = null;
+            store.resolve({ path: "soundcloud:5" }, function(u, e, f) { got = f; });
+            tryVerify(function() { return got !== null; });
+            compare(got.format, "AAC 96");
+            got = null;
+            store.resolve({ path: "soundcloud:5" }, function(u, e, f) { got = f; }, "AAC 160");
+            tryVerify(function() { return got !== null; });
+            compare(asked, ["none", "AAC 96", "AAC 160"]);
+            // A service without a choice: no formats.
+            root.answers["POST /provider/jamendo/resolve"] = [200, { url: "https://j/1.mp3" }];
+            var done = false;
+            store.resolve({ path: "jamendo:1" }, function(u, e, f) { got = f; done = true; });
+            tryVerify(function() { return done; });
+            compare(got, null);
+            store.preferredFormats = {};
+        }
     }
 
     TestCase {
@@ -232,6 +277,141 @@ Item {
             tryVerify(function() { return player.playing; }, 5000);
             compare(failed, ["gone"]);
             player.failed.disconnect(onFailed);
+        }
+
+        // Jamendo's shared client id is refused now and then: the same
+        // track picked again is tried again, and says so when it fails
+        // again rather than doing nothing.
+        function test_track_that_failed_can_be_picked_again() {
+            var attempts = 0;
+            root.answers["POST /provider/jamendo/resolve"] = function(body) {
+                attempts++;
+                if (attempts <= 2)
+                    return [502, { error: "jamendo: no audio for " + body.trackId }];
+                return [200, { url: fileUrl("Various/Summer Mix/01 Ana Ray - Sun.ogg") }];
+            };
+            var failed = [];
+            var onFailed = function(track, reason) { failed.push(reason); };
+            player.failed.connect(onFailed);
+            var track = { path: "jamendo:flaky", title: "Flaky", remote: true };
+            player.playTracks([track], 0, false);
+            tryCompare(failed, "length", 1, 5000);
+            verify(!player.playing);
+            player.playTracks([track], 0, false);
+            tryCompare(failed, "length", 2, 5000);
+            compare(failed[1], "jamendo: no audio for flaky");
+            player.playTracks([track], 0, false);
+            tryVerify(function() { return player.playing && player.active.path === "jamendo:flaky"; }, 5000);
+            compare(attempts, 3);
+            player.failed.disconnect(onFailed);
+            player.pause();
+        }
+
+        // The streamed track's formats, and a switch that carries on from
+        // where it was in the other format's stream.
+        function test_switch_format() {
+            var asked = [];
+            root.answers["POST /provider/soundcloud/resolve"] = function(body) {
+                var f = body.format || "AAC 160";
+                asked.push(f);
+                if (f === "OPUS 64")
+                    return [502, { error: "soundcloud: no OPUS 64" }];
+                return [200, { url: fileUrl(f === "AAC 96" ? "Various/Summer Mix/02 Cool Cats - Sun.ogg"
+                                                           : "Various/Summer Mix/01 Ana Ray - Sun.ogg"),
+                               format: f, formats: ["AAC 160", "AAC 96", "OPUS 64"] }];
+            };
+            player.playTracks([{ path: "soundcloud:7", title: "Seven", remote: true }], 0, false);
+            tryVerify(function() { return player.playing && player.seekable; }, 5000);
+            compare(player.currentFormat, { format: "AAC 160", formats: ["AAC 160", "AAC 96", "OPUS 64"] });
+            player.pause();
+            player.seek(1500);
+            tryVerify(function() { return player.position >= 1500; }, 5000);
+
+            // Paused, so only the seek to where it was can bring it there.
+            var result = null;
+            player.switchFormat("AAC 96", function(e) { result = e; });
+            tryVerify(function() { return result !== null; }, 5000);
+            compare(result, "");
+            compare(asked[asked.length - 1], "AAC 96");
+            compare(player.currentFormat.format, "AAC 96");
+            verify(String(player.active.source).indexOf("Cool Cats") >= 0, String(player.active.source));
+            tryVerify(function() { return player.seekable && player.active.position >= 1400; }, 5000);
+            verify(!player.playing);
+
+            // Playing, it plays on in the new one.
+            player.play();
+            result = null;
+            player.switchFormat("AAC 160", function(e) { result = e; });
+            tryVerify(function() { return result !== null; }, 5000);
+            tryVerify(function() { return player.playing && String(player.active.source).indexOf("Ana Ray") >= 0; }, 5000);
+
+            // Not to be had: the stream playing plays on.
+            result = null;
+            player.switchFormat("OPUS 64", function(e) { result = e; });
+            tryVerify(function() { return result !== null; }, 5000);
+            compare(result, "soundcloud: no OPUS 64");
+            compare(player.currentFormat.format, "AAC 160");
+            verify(player.playing);
+            // Not one the track has: nothing asked.
+            var n = asked.length;
+            result = null;
+            player.switchFormat("FLAC", function(e) { result = e; });
+            compare(result, "This track has no other formats.");
+            compare(asked.length, n);
+            player.pause();
+        }
+
+        // A preloaded next track brings its formats along, without taking
+        // the playing one's; a track of a service without a choice has none.
+        function test_formats_follow_the_track() {
+            root.answers["POST /provider/soundcloud/resolve"] = function(body) {
+                return [200, { url: fileUrl(body.trackId === "1" ? "Various/Summer Mix/01 Ana Ray - Sun.ogg"
+                                                                 : "Various/Summer Mix/02 Cool Cats - Sun.ogg"),
+                               format: body.trackId === "1" ? "AAC 160" : "MP3 128",
+                               formats: ["AAC 160", "MP3 128"] }];
+            };
+            root.answers["POST /provider/jamendo/resolve"] = [200, { url: fileUrl("Various/Summer Mix/03 Zed - Sun.ogg") }];
+            player.playTracks([{ path: "soundcloud:1", title: "One", remote: true },
+                               { path: "soundcloud:3", title: "Three", remote: true },
+                               { path: "jamendo:2", title: "Two", remote: true }], 0, false);
+            tryVerify(function() { return player.playing; }, 5000);
+            // A 3 s track: the next is loaded at once.
+            tryVerify(function() { return player._preloadedPos === 1 && player.standby.loaded; }, 5000);
+            compare(player.currentFormat.format, "AAC 160");
+            player.next();
+            tryVerify(function() { return player.playing && player.active.path === "soundcloud:3"; }, 5000);
+            compare(player.currentFormat.format, "MP3 128");
+            player.next();
+            tryVerify(function() { return player.playing && player.active.path === "jamendo:2"; }, 5000);
+            compare(player.currentFormat, null);
+            var r = null;
+            player.switchFormat("AAC 160", function(e) { r = e; });
+            compare(r, "This track has no other formats.");
+            player.pause();
+        }
+
+        // A long track carries on where it was left (resumeLookup), playing
+        // or paused, also when it has to be resolved first.
+        function test_resume_point_is_kept() {
+            root.answers["POST /provider/jamendo/resolve"] = [200, { url: fileUrl("Various/Summer Mix/02 Cool Cats - Sun.ogg") }];
+            player.resumeLookup = function(track) { return 1500; };
+            var tracks = [{ path: fileUrl("Various/Summer Mix/01 Ana Ray - Sun.ogg").replace(/^file:\/\//, "").split("/").map(decodeURIComponent).join("/"),
+                            title: "File" },
+                          { path: "jamendo:9", title: "Streamed", remote: true }];
+            for (var i = 0; i < tracks.length; i++) {
+                // Paused: only the seek brings it there.
+                player.playTracks([tracks[i]], 0, false);
+                player.pause();
+                tryVerify(function() { return player.active.seekable && player.active.position >= 1400; }, 5000,
+                          tracks[i].title + " paused at " + player.active.position);
+                // Playing: within the first second it is past the resume point.
+                player.playTracks([tracks[i]], 0, false);
+                tryVerify(function() { return player.playing; }, 5000);
+                tryVerify(function() { return player.active.position >= 1500; }, 1000,
+                          tracks[i].title + " playing at " + player.active.position);
+            }
+            player.resumeLookup = null;
+            player.pause();
         }
 
         function test_spotify_goes_through_librespot() {

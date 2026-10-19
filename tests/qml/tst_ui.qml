@@ -162,6 +162,93 @@ Item {
             lp.category = "albums";
         }
 
+        // A streamed track whose service has more than one format: its
+        // badge under the seek bar, the Quality sheet, and the pick kept
+        // for that service.
+        function fakeQuality(method, url, body, done) {
+            var path = url.replace(/^http:\/\/127\.0\.0\.1:8730/, "").replace(/\?.*$/, "");
+            if (method === "GET" && path === "/providers")
+                return done(200, { providers: [{ id: "soundcloud", name: "SoundCloud" }] });
+            if (method === "POST" && path === "/provider/soundcloud/resolve") {
+                var f = body.format || "AAC 160";
+                return done(200, { url: "file://" + (root.fixtures + (f === "AAC 96" ? "/Various/Summer Mix/02 Cool Cats - Sun.ogg"
+                                                                                       : "/Various/Summer Mix/01 Ana Ray - Sun.ogg"))
+                                        .split("/").map(encodeURIComponent).join("/"),
+                                   format: f, formats: ["AAC 160", "AAC 96"] });
+            }
+            done(404, { error: "no" });
+        }
+
+        // A streamed track has no lyrics of its own: they come from LRCLIB,
+        // credited; with the lookup off, none are asked for.
+        function test_18_streaming_lyrics() {
+            var asked = [];
+            root.app.lyricsLookup.transport = function(url, done) {
+                asked.push(url);
+                done(200, [{ duration: 3, syncedLyrics: "[00:00.50]Up in the cloud\n[00:01.50]Second line",
+                             plainLyrics: "Up in the cloud" }]);
+            };
+            root.app.streaming.transport = fakeQuality;
+            root.app.player.playTracks([{ path: "soundcloud:1", title: "Cloud Song", artist: "Someone", album: "SoundCloud",
+                                          provider: "soundcloud", remote: true, duration: 3000 }], 0, false);
+            root.app.openNowPlaying();
+            var np = findByName(root.app.contentItem, "nowPlaying");
+            tryCompare(np, "y", 0, 3000);
+            np.showLyrics = true;
+            tryCompare(np, "lyricsStatus", "found", 3000);
+            verify(np.lyricsText.indexOf("Up in the cloud") >= 0);
+            compare(asked.length, 1);
+            verify(asked[0].indexOf("track_name=Cloud%20Song&artist_name=Someone") > 0, asked[0]);
+            verify(findByName(np, "lyricsCredit").visible);
+            wait(300);
+            screenshot("lyrics-lrclib");
+            np.showLyrics = false;
+            root.app.prefs.lyricsOnline = false;
+            np.showLyrics = true;
+            compare(np.lyricsStatus, "none");
+            compare(asked.length, 1);
+            np.showLyrics = false;
+            root.app.prefs.lyricsOnline = true;
+            root.app.lyricsLookup.transport = function(url, done) { done(200, []); };
+            root.app.player.clearQueue();
+            root.app.closeNowPlaying();
+            settle();
+        }
+
+        function test_18_streaming_quality() {
+            root.app.prefs.streamFormats = "{}";
+            root.app.streaming.transport = fakeQuality;
+            root.app.streaming.refresh();
+            tryVerify(function() { return root.app.streaming.available; });
+            root.app.player.playTracks([{ path: "soundcloud:1", title: "Cloud Song", artist: "Someone", album: "SoundCloud",
+                                          provider: "soundcloud", remote: true, duration: 3000 }], 0, false);
+            tryVerify(function() { return root.app.player.playing; }, 5000);
+            root.app.openNowPlaying();
+            var np = findByName(root.app.contentItem, "nowPlaying");
+            tryCompare(np, "y", 0, 3000); // slid in
+            var badge = findByName(np, "formatBadge");
+            tryVerify(function() { return badge.visible; }, 3000);
+            screenshot("now-playing-quality");
+            mouseClick(badge);
+            verify(root.app.sheet.shown);
+            wait(400); // the sheet slides up
+            compare(root.app.sheet.title, "Quality");
+            compare(root.app.sheet.subtitle, "SoundCloud");
+            compare(root.app.sheet.choices.map(function(c) { return c.label + (c.checked ? "*" : ""); }), ["AAC 160*", "AAC 96"]);
+            screenshot("quality-sheet");
+            root.app.sheet.choose(1);
+            tryVerify(function() { return root.app.player.currentFormat && root.app.player.currentFormat.format === "AAC 96"; }, 3000);
+            compare(JSON.parse(root.app.prefs.streamFormats), { soundcloud: "AAC 96" });
+            compare(root.app.streaming.preferredFormats.soundcloud, "AAC 96");
+            // A local file has no badge.
+            root.app.player.playTracks(root.app.library.lib.songs.slice(0, 1), 0, false);
+            tryVerify(function() { return !badge.visible; }, 3000);
+            root.app.player.clearQueue();
+            root.app.prefs.streamFormats = "{}";
+            root.app.closeNowPlaying();
+            settle();
+        }
+
         // Every main screen at every size the app has to look right at:
         // a phone (480x800, and the small 320x480), the Q25's square
         // (720x720), a tablet both ways (1024x768, 768x1024).
@@ -193,6 +280,16 @@ Item {
             var spy = Qt.createQmlObject('import QtTest; SignalSpy { signalName: "dismissed" }', test);
             spy.target = dash;
             verify(dash.visible);
+            dash.visible = false;
+            compare(spy.count, 1);
+            dash.destroy();
+            // As the shell does it on the device: a close request, the window
+            // going without turning invisible. Once, also if it is hidden after.
+            dash = c.createObject(null, { player: root.app.player, theme: root.app.theme });
+            spy.clear();
+            spy.target = dash;
+            dash.windowCloseRequested(null);
+            compare(spy.count, 1);
             dash.visible = false;
             compare(spy.count, 1);
             dash.destroy();
@@ -257,6 +354,8 @@ Item {
                 fail(c.errorString());
             root.app = c.createObject(null, { width: 480, height: 800, internalStorage: root.fixtures });
             verify(root.app, c.errorString());
+            // Never LRCLIB itself: songs without lyrics find none.
+            root.app.lyricsLookup.transport = function(url, done) { done(200, []); };
             tryCompare(root.app.library, "status", "ready", 5000);
             // TagReader fills in the lengths the indexer leaves at 0.
             tryVerify(function() { return !root.app.library.enriching; }, 10000);
@@ -393,6 +492,8 @@ Item {
             screenshot("now-playing");
             np.showLyrics = true;
             tryVerify(function() { return np.lyricsText.indexOf("Chorus line") >= 0; });
+            // The song's own lyrics: no credit.
+            verify(!findByName(np, "lyricsCredit").visible);
             screenshot("lyrics");
             np.showLyrics = false;
             mouseClick(findByName(np, "shuffleButton"));
@@ -522,6 +623,23 @@ Item {
             page.text = "sun";
             tryVerify(function() { return page.result.songs.length === 3; });
             screenshot("search");
+            // A song tapped: it plays, and the keyboard goes with the field's focus.
+            var field = findByName(page, "searchField");
+            field.forceActiveFocus(); // as on opening, also when the test window is not active
+            verify(field.focus);
+            var list = findByName(page, "searchResults");
+            var at = -1;
+            for (var i = 0; i < page.rows.length && at < 0; i++)
+                if (page.rows[i].song)
+                    at = i;
+            verify(at >= 0);
+            list.positionViewAtIndex(at, ListView.Contain);
+            waitForRendering(list);
+            mouseClick(list.itemAtIndex(at).item);
+            verify(!field.focus);
+            compare(root.app.player.current.path, page.rows[at].song.path);
+            root.app.player.pause();
+            field.forceActiveFocus();
             page.text = "blue";
             compare(page.result.artists[0].name, "Blue Band");
             // Just Type's Search Music action.

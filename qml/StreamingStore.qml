@@ -43,6 +43,10 @@ Item {
     // "unknown", "ready" or "unavailable" (no daemon).
     property string status: "unknown"
     readonly property bool available: status === "ready" && providers.length > 0
+    // { providerId: format label } the user picked, e.g. { soundcloud: "AAC 96" }:
+    // a service's tracks are asked for in it (each falls back to its best
+    // format when it has no such one).
+    property var preferredFormats: ({})
 
     // function(method, url, body, done(httpStatus, jsonOrNull)): the HTTP
     // calls, replaceable by the tests.
@@ -151,19 +155,26 @@ Item {
         return p ? p.name : Streaming.displayName(id);
     }
 
-    /* done(url, error): what plays a streamed track. */
-    function resolve(track, done) {
+    /* done(url, error, formats): what plays a streamed track, in format (a
+     * label from an earlier formats) or else the one preferred for its
+     * service. formats is { format, formats: [labels] } - the one it plays in
+     * and the ones it has - when the service has a choice, else null. */
+    function resolve(track, done, format) {
         var parts = Streaming.split(track.path);
         if (!parts) {
-            done("", "Not a streamed track.");
+            done("", "Not a streamed track.", null);
             return;
         }
+        var body = { trackId: parts.id };
+        var want = format || preferredFormats[parts.provider];
+        if (want)
+            body.format = want;
         transport("POST", baseUrl + "/provider/" + encodeURIComponent(parts.provider) + "/resolve",
-                  { trackId: parts.id }, function(code, data) {
+                  body, function(code, data) {
             if (code === 200 && data && data.url)
-                done(data.url, "");
+                done(data.url, "", Streaming.formats(data));
             else
-                done("", (data && data.error) ? data.error : "The streaming service is not running.");
+                done("", (data && data.error) ? data.error : "The streaming service is not running.", null);
         });
     }
 }

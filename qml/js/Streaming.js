@@ -80,6 +80,20 @@ function track(t, providerName) {
     };
 }
 
+/* A resolve's answer ({ url, format, formats }) as { format, formats }, the
+ * format it plays in among the ones the track has; null when the service did
+ * not say (it has no choice). */
+function formats(reply) {
+    if (!reply || typeof reply.format !== "string" || reply.format === "")
+        return null;
+    var all = Array.isArray(reply.formats) ? reply.formats.filter(function(f) {
+        return typeof f === "string" && f !== "";
+    }) : [];
+    if (all.indexOf(reply.format) < 0)
+        all.unshift(reply.format);
+    return { format: reply.format, formats: all };
+}
+
 /*
  * The services to offer: those the daemon has whose account is in
  * Accounts, plus the ones that need none. accountTemplateIds null (Accounts

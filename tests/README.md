@@ -6,8 +6,9 @@
 
 The host build is this project built for the host (`cmake -S . -B <dir>
 -DBUILD_TESTING=ON`, TagLib from a sysroot works: see below); its plugin is
-the real one. luneos-components needs its desktop build and the
-`herrie/music-shared-parts` files.
+the real one. luneos-components needs its desktop build, ActionSheet and
+FastScroller, and the desktop stand-in Db8Model with status, the error
+properties and the writing calls.
 
 - `tst_queue.qml`: `qml/js/Queue.js` - order, shuffle and unshuffle (with
   changes made meanwhile), repeat, play next, move, remove, save/restore.
@@ -134,13 +135,16 @@ code.
 
 ## On a device
 
-    tools/prepare-device.sh <serial> <luneos-components> <mediaindexer>
+    tools/prepare-device.sh <serial> <luneos-components> <mediaindexer> [--service-plugin <libLuneOSService.so>]
     tools/install.sh <build dir> <serial>
     tools/test-device.sh <serial> <name> [--with-fixtures]
 
 `prepare-device.sh` puts the luneos-components additions and the indexer's
 read grant on the device (keeping what it replaces) and refuses a device
-whose luneos-components is older than the checkout. `install.sh` installs an
+whose luneos-components is older than the checkout; `--service-plugin`
+replaces the LuneOS.Service plugin with one built for the device (an image
+whose Db8Model has no pages, errors or writes yet), renamed into place so
+running apps keep theirs. `install.sh` installs an
 "Architecture: all" ipk through appInstallService and makes the hub rescan
 the app's permissions (without it SAM's registerApp is denied and SAM closes
 the app after each launch). `test-device.sh` checks that Shuffle All plays
@@ -154,6 +158,12 @@ a qml-runner stream in PulseAudio). YouTube resolved, but its upstream
 answered 403 after the first MiB (the daemon's known YouTube problem,
 recorded in luneos-synergy-connectors' tests), so it did not play. Spotify,
 Tidal, Deezer, Qobuz and Apple need accounts and were not tried.
+
+Db8Model, 2026-10-18 on the mindphone (armv7, its own 482 songs), with the
+LuneOS.Service plugin of luneos-components' Db8Model change: the library
+read through it, the play-count kind registered and read, and a favourite
+written and unwritten (the record's revision and value checked in db8 after
+each tap).
 
 Screenshots 2026-10-18 on all three (docs/screenshots), with the demo
 library: the mindphone (armv7, 480x800), the Q25 (aarch64, 720x720) and

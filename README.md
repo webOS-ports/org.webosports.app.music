@@ -89,6 +89,10 @@ Tablet (TouchPad, 1024x768):
   app plays it itself, so streams seek, take the volume, ReplayGain,
   crossfade and the sleep timer like files; Spotify plays through the
   daemon's librespot (Spotify Connect), driven by the app.
+- Where a service has a track in more than one format (SoundCloud's AAC 160
+  and 96, YouTube's AAC and Opus), Now Playing shows the one playing under
+  the seek bar; a tap offers the others, switches where the track is, and
+  keeps the choice for that service's next tracks.
 - Streamed tracks queue, favourite and go into playlists like files (a
   playlist keeps their title and cover); the queue keeps them across
   restarts.
@@ -107,6 +111,9 @@ Tablet (TouchPad, 1024x768):
   hold Previous/Next to rewind or fast-forward, faster the longer.
 - Synced lyrics (LRC, embedded or a `.lrc` beside the file) following the
   music, tap a line to go there; plain lyrics scroll.
+- Songs without lyrics of their own - streamed ones, files without them -
+  get them from LRCLIB (lrclib.net) by artist and title, credited; it can
+  be switched off in Preferences.
 - Song info (tags, format, gains, play counts).
 
 **webOS**
@@ -141,12 +148,12 @@ Tablet (TouchPad, 1024x768):
     qml/main.qml              the window: stores, player, navigation, menus
     qml/Player.qml            the queue player: two engines, gain, crossfade
     qml/Engine.qml            one MediaPlayer with its volume factors
-    qml/LibraryStore.qml      the indexer's songs, enriched by TagReader
-    qml/StatsStore.qml        play counts, favourites, bookmarks (db8)
-    qml/PlaylistStore.qml     playlists (db8)
+    qml/LibraryStore.qml      the indexer's songs (Db8Model), enriched by TagReader
+    qml/StatsStore.qml        play counts, favourites, bookmarks (Db8Model)
+    qml/PlaylistStore.qml     playlists (Db8Model)
     qml/StreamingStore.qml    the streaming services (daemon + Accounts)
     qml/SpotifyEngine.qml     Spotify through the daemon's librespot
-    qml/NowPlaying.qml        Now Playing; LyricsView.qml its lyrics
+    qml/NowPlaying.qml        Now Playing; LyricsView.qml its lyrics, LyricsLookup.qml LRCLIB's
     qml/Dashboard.qml         the dashboard
     qml/ExhibitionWindow.qml  exhibition's dock window; ExhibitionView.qml
     qml/pages, qml/views      library pages and the category views
@@ -160,20 +167,22 @@ Tablet (TouchPad, 1024x768):
 
 ## Depends on
 
-- luneos-components with `ActionSheet`, `FastScroller` and ConfirmDialog's
-  `acceptText`/`destructive` (master since 71bd064).
-- mediaindexer's read grant for this app (branch `herrie/music-read-grant`);
-  without it the app asks through `com.palm.mediapermissions`.
-- For streaming: `luneos-synergy-music` with `/provider/<id>/resolve`
-  (luneos-synergy-connectors branch `herrie/music-resolve`).
-- For Just Type: luna-universalsearchmgr registering apps' providers
-  (branch `herrie/justtype-app-providers`; it registers none on current
-  images), and luna-applauncher subscribing again after the search service
-  restarts (branch `herrie/justtype-resubscribe`).
-- For exhibition with the card open: luna-next-cardshell with d833e75
-  (master), so the carousel takes the dock window.
-- TagLib 2, Qt 6 Quick/Multimedia (GStreamer), and the GStreamer plugins for
-  the formats (the recipe recommends them).
+- Qt 6 (Quick, Multimedia with the GStreamer backend) and the GStreamer
+  plugins for the formats; TagLib 2.
+- luneos-components: the LuneOS Controls style, LuneOS.Forms, and from
+  LuneOS.Components `ActionSheet`, `FastScroller` and `ConfirmDialog`
+  (`acceptText`, `destructive`); from LuneOS.Service `Db8Model` with all
+  pages, db8's errors and the writing calls (`allPages`, `status`,
+  `error()`, `put`/`merge`/`del`/`putKind`) for the library, play counts
+  and playlists.
+- The media indexer, with a read grant on `com.palm.media.audio.file` for
+  this app; without one the app asks through `com.palm.mediapermissions`.
+- For streaming: the music streaming service (`luneos-synergy-music`) with
+  its `/provider/<id>/resolve`, and a Synergy account per service.
+- For Just Type: luna-universalsearchmgr registering apps' providers, and
+  the launcher subscribing again when the search service restarts.
+- For exhibition with the card open: a card shell that takes the app's
+  dock window.
 
 ## Build
 

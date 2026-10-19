@@ -31,6 +31,13 @@ Item {
     property var theme
     property string text: ""
     property real position: 0
+    // Who to credit: "" for the song's own lyrics, else the name of where
+    // they were looked up.
+    property string source: ""
+    // "searching", "found", "instrumental" or "none" (NowPlaying).
+    property string status: "none"
+    // Only the song's own lyrics are looked for (no lookup online, a file).
+    property bool ownOnly: false
 
     signal seekRequested(real ms)
 
@@ -95,8 +102,21 @@ Item {
         visible: view.parsed.lines.length === 0
         horizontalAlignment: Text.AlignHCenter
         wrapMode: Text.WordWrap
-        text: "No lyrics for this song.\nPut them in its tags, or in a .lrc file of the same name beside it."
+        text: view.status === "searching" ? "Looking for lyrics…"
+            : view.status === "instrumental" ? "Instrumental"
+            : view.ownOnly ? "No lyrics for this song.\nPut them in its tags, or in a .lrc file of the same name beside it."
+            : "No lyrics found for this song."
         color: view.theme.darkSecondaryText
         font.pixelSize: view.theme.fontSmall
+    }
+
+    Text {
+        objectName: "lyricsCredit"
+        anchors.bottom: parent.bottom
+        anchors.horizontalCenter: parent.horizontalCenter
+        visible: view.source !== "" && view.parsed.lines.length > 0
+        text: "Lyrics from " + view.source
+        color: view.theme.darkFaintText
+        font.pixelSize: view.theme.fontTiny
     }
 }

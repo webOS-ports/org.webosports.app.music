@@ -59,11 +59,38 @@ Item {
     // The songs as they are now; lib is rebuilt from these.
     property var _songs: []
     property bool _asked: false
-    property var _watchCall: null
+    property bool _loaded: false
 
-    Db8 {
-        id: db
-        clientName: store.clientName
+    // The indexer's songs, every page, found again when they change; the
+    // kind is set by the first load().
+    Db8Model {
+        id: indexed
+        query: ({
+            select: ["_id", "path", "title", "artist", "albumArtist", "album", "genre",
+                     "track", "disc", "duration", "modifiedTime", "isRingtone"],
+            limit: 500
+        })
+        allPages: true
+        watch: true
+        onStatusChanged: {
+            if (status !== "ready")
+                return;
+            // The first answer at once; the indexer then adds songs in
+            // bursts while it scans, so later ones wait for it to settle.
+            if (!store._loaded)
+                store._takeRecords();
+            else
+                reloadTimer.restart();
+        }
+        onError: function(errorText, errorCode) {
+            if (errorCode === -3963 && !store._asked) {
+                store._asked = true;
+                store._askPermission();
+                return;
+            }
+            store.errorText = errorText;
+            store.status = errorCode === -3963 ? "denied" : "error";
+        }
     }
 
     LunaService {
@@ -103,32 +130,27 @@ Item {
         }
     }
 
-    // The indexer adds songs in bursts while it scans: wait for it to settle.
     Timer {
         id: reloadTimer
         interval: 3000
-        onTriggered: store.load()
+        onTriggered: store._takeRecords()
     }
 
     function load() {
         if (_songs.length === 0)
             status = "loading";
-        db.findAll({
-            from: kind,
-            select: ["_id", "path", "title", "artist", "albumArtist", "album", "genre",
-                     "track", "disc", "duration", "modifiedTime", "isRingtone"]
-        }, function(results) {
-            store.setRecords(results);
-            store._watch();
-        }, function(error, code) {
-            if (code === -3963 && !store._asked) {
-                store._asked = true;
-                store._askPermission();
-                return;
-            }
-            store.errorText = error;
-            store.status = code === -3963 ? "denied" : "error";
-        });
+        if (indexed.kind === "")
+            indexed.kind = kind;
+        else
+            indexed.refresh();
+    }
+
+    function _takeRecords() {
+        var records = [];
+        for (var i = 0; i < indexed.count; i++)
+            records.push(indexed.get(i));
+        _loaded = true;
+        setRecords(records);
     }
 
     function _askPermission() {
@@ -153,12 +175,6 @@ Item {
     function retryPermission() {
         _asked = true;
         _askPermission();
-    }
-
-    function _watch() {
-        if (_watchCall && typeof _watchCall.cancel === "function")
-            _watchCall.cancel();
-        _watchCall = db.watch(kind, function() { reloadTimer.restart(); });
     }
 
     /* The library from indexer records (also what the tests feed in). */

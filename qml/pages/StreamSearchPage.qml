@@ -65,6 +65,13 @@ Item {
         onTriggered: page.search()
     }
 
+    // Done typing: a result picked, Enter, or the list scrolled. The keyboard
+    // goes with the field's focus.
+    function dismissKeyboard() {
+        field.focus = false;
+        Qt.inputMethod.hide();
+    }
+
     TextField {
         id: field
         objectName: "streamSearchField"
@@ -75,7 +82,7 @@ Item {
         placeholderText: "Search " + page.title
         inputMethodHints: Qt.ImhNoPredictiveText
         onTextChanged: debounce.restart()
-        onAccepted: { debounce.stop(); page.search(); }
+        onAccepted: { debounce.stop(); page.search(); page.dismissKeyboard(); }
     }
 
     ListView {
@@ -87,6 +94,7 @@ Item {
         width: parent.width
         clip: true
         model: page.results
+        onMovementStarted: page.dismissKeyboard()
         delegate: SongRow {
             required property var modelData
             required property int index
@@ -94,8 +102,8 @@ Item {
             theme: page.theme
             subtitle: modelData.artist + (modelData.album && modelData.album !== modelData.artist ? " — " + modelData.album : "")
             playing: appWindow.player.current !== null && appWindow.player.current.path === modelData.path
-            onClicked: appWindow.player.playTracks(page.results, index, false)
-            onMenuRequested: appWindow.songMenu(modelData, null)
+            onClicked: { page.dismissKeyboard(); appWindow.player.playTracks(page.results, index, false); }
+            onMenuRequested: { page.dismissKeyboard(); appWindow.songMenu(modelData, null); }
         }
     }
 

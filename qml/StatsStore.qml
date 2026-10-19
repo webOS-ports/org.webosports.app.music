@@ -16,6 +16,8 @@
 
 import QtQuick
 
+import LuneOS.Service 1.0
+
 /*
  * What the user did with each song - plays, skips, when last played, the
  * favourite heart, where a long track was left - in the app's own db8 kind,
@@ -41,9 +43,26 @@ Item {
     // Records written since the last flush, by path.
     property var _dirty: ({})
 
-    Db8 {
+    // The app's kind: registered, then read once, every page; after that
+    // the records here are the truth and only written.
+    Db8Model {
         id: db
-        clientName: stats.clientName
+        query: ({ limit: 500 })
+        allPages: true
+        onStatusChanged: {
+            if (status !== "ready" || stats.ready)
+                return;
+            var map = {};
+            for (var i = 0; i < count; i++) {
+                var r = get(i);
+                if (r.path)
+                    map[r.path] = r;
+            }
+            stats.byPath = map;
+            stats.ready = true;
+            stats.revision++;
+        }
+        onError: function(errorText) { console.warn("Music: cannot read play counts: " + errorText); }
     }
 
     function load() {
@@ -54,15 +73,12 @@ Item {
                 { name: "path", props: [{ name: "path" }] },
                 { name: "lastPlayed", props: [{ name: "lastPlayed" }] }
             ]
-        }, function() {
-            db.findAll({ from: kind }, function(results) {
-                var map = {};
-                results.forEach(function(r) { if (r.path) map[r.path] = r; });
-                stats.byPath = map;
-                stats.ready = true;
-                stats.revision++;
-            }, function(error) { console.warn("Music: cannot read play counts: " + error); });
-        }, function(error) { console.warn("Music: cannot register " + kind + ": " + error); });
+        }, function(reply) {
+            if (reply.returnValue)
+                db.kind = kind;
+            else
+                console.warn("Music: cannot register " + kind + ": " + reply.errorText);
+        });
     }
 
     function get(path) {
@@ -180,25 +196,26 @@ Item {
         _dirty = later;
         if (waiting)
             flushTimer.restart();
-        if (known.length)
-            db.merge(known, null, function(error) { console.warn("Music: cannot save play counts: " + error); });
+        if (known.length) {
+            db.merge(known, function(reply) {
+                if (!reply.returnValue)
+                    console.warn("Music: cannot save play counts: " + reply.errorText);
+            });
+        }
         if (fresh.length) {
             db.put(fresh, function(reply) {
-                (reply.results || []).forEach(function(res, i) {
-                    var rec = stats.byPath[fresh[i].path];
-                    if (rec) {
-                        rec._pending = false;
-                        if (res.id || res._id)
-                            rec._id = res.id || res._id;
-                    }
-                });
-            }, function(error) {
-                fresh.forEach(function(o) {
+                var ok = reply.returnValue !== false;
+                fresh.forEach(function(o, i) {
                     var rec = stats.byPath[o.path];
-                    if (rec)
-                        rec._pending = false;
+                    if (!rec)
+                        return;
+                    rec._pending = false;
+                    var res = ok ? (reply.results || [])[i] : null;
+                    if (res && (res.id || res._id))
+                        rec._id = res.id || res._id;
                 });
-                console.warn("Music: cannot save play counts: " + error);
+                if (!ok)
+                    console.warn("Music: cannot save play counts: " + reply.errorText);
             });
         }
     }

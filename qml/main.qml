@@ -81,6 +81,7 @@ WebOSWindow {
     property alias stats: stats
     property alias playlists: playlists
     property alias streaming: streaming
+    property alias lyricsLookup: lyricsLookup
     property alias artCache: artCache
     property alias sleepTimer: sleepTimer
     property alias sheet: sheet
@@ -137,6 +138,18 @@ WebOSWindow {
     StreamingStore {
         id: streaming
         clientName: appWindow.appId
+        preferredFormats: {
+            try {
+                return JSON.parse(preferences.streamFormats) || {};
+            } catch (e) {
+                return {};
+            }
+        }
+    }
+
+    LyricsLookup {
+        id: lyricsLookup
+        enabled: preferences.lyricsOnline
     }
 
     PlaylistIO {
@@ -160,7 +173,7 @@ WebOSWindow {
         preventClipping: preferences.preventClipping
         crossfadeMs: preferences.crossfade * 1000
         gainLookup: function(path) { return library.gainTags(path); }
-        urlResolver: function(track, done) { streaming.resolve(track, done); }
+        urlResolver: function(track, done, format) { streaming.resolve(track, done, format); }
         streamingTransport: streaming.transport
         resumeLookup: function(track) {
             return preferences.resumeLongTracks && Library.isLongForm(track) ? stats.bookmarkOf(track.path) : 0;
@@ -469,7 +482,11 @@ WebOSWindow {
 
     // --- dashboard -------------------------------------------------------------------
 
-    readonly property bool cardActive: Qt.application.state === Qt.ApplicationActive
+    // The card in front - the card window, not the application: touching or
+    // swiping the dashboard makes the application active too (its window takes
+    // the focus), and taking that for the card dropped the dashboard before the
+    // shell's close could reach it, the music playing on.
+    readonly property bool cardActive: appWindow.active
     // Back in front: an account may have been added or removed meanwhile.
     onCardActiveChanged: if (cardActive) streaming.refresh()
 
@@ -1084,6 +1101,26 @@ WebOSWindow {
         if (sleepTimer.running)
             choices.push({ label: "Turn Off", destructive: true, action: function() { sleepTimer.cancel(); } });
         sheet.show("Sleep Timer", choices, sleepTimer.running ? "Stops in " + sleepTimer.remainingText : "");
+    }
+
+    // The streamed track's formats, when its service offers more than one;
+    // the one picked is kept for that service's next tracks.
+    function chooseFormat() {
+        var f = player.currentFormat;
+        var parts = player.current ? Streaming.split(player.current.path) : null;
+        if (!f || f.formats.length < 2 || !parts)
+            return;
+        sheet.show("Quality", f.formats.map(function(label) {
+            return { label: label, checked: label === f.format, action: function() {
+                var picked = Object.assign({}, streaming.preferredFormats);
+                picked[parts.provider] = label;
+                preferences.streamFormats = JSON.stringify(picked);
+                player.switchFormat(label, function(error) {
+                    if (error)
+                        appWindow.notify(error);
+                });
+            } };
+        }), streaming.providerName(parts.provider));
     }
 
     function chooseSpeed() {

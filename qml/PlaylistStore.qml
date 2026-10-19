@@ -16,6 +16,8 @@
 
 import QtQuick
 
+import LuneOS.Service 1.0
+
 /*
  * The user's playlists, in the app's own db8 kind:
  *
@@ -37,9 +39,23 @@ Item {
 
     signal failed(string text)
 
-    Db8 {
+    // The app's kind: registered, then read once, every page; after that
+    // the list here is the truth and only written.
+    Db8Model {
         id: db
-        clientName: store.clientName
+        query: ({ limit: 500 })
+        allPages: true
+        onStatusChanged: {
+            if (status !== "ready" || store.ready)
+                return;
+            var list = [];
+            for (var i = 0; i < count; i++)
+                list.push(get(i));
+            store.playlists = store._sorted(list);
+            store.ready = true;
+            store.revision++;
+        }
+        onError: function(errorText) { store.failed("Cannot read playlists: " + errorText); }
     }
 
     function load() {
@@ -47,13 +63,12 @@ Item {
             id: kind,
             owner: clientName,
             indexes: [{ name: "name", props: [{ name: "name", collate: "primary" }] }]
-        }, function() {
-            db.findAll({ from: kind }, function(results) {
-                store.playlists = store._sorted(results);
-                store.ready = true;
-                store.revision++;
-            }, function(error) { store.failed("Cannot read playlists: " + error); });
-        }, function(error) { store.failed("Cannot set up playlists: " + error); });
+        }, function(reply) {
+            if (reply.returnValue)
+                db.kind = kind;
+            else
+                store.failed("Cannot set up playlists: " + reply.errorText);
+        });
     }
 
     function _sorted(list) {
@@ -102,21 +117,26 @@ Item {
         var now = Date.now();
         var p = { _kind: kind, name: uniqueName(name), tracks: paths.slice(), created: now, modified: now };
         db.put([p], function(reply) {
+            if (reply.returnValue === false) {
+                store.failed("Cannot save the playlist: " + reply.errorText);
+                return;
+            }
             var res = (reply.results || [])[0];
-            // db8 answers { id, rev }; the desktop stand-in the object itself.
             if (res && (res.id || res._id))
                 p._id = res.id || res._id;
             store._replace(p);
             if (done)
                 done(p);
-        }, function(error) { store.failed("Cannot save the playlist: " + error); });
+        });
     }
 
     function _save(p) {
         p.modified = Date.now();
         _replace(p);
-        db.merge([{ _id: p._id, _kind: kind, name: p.name, tracks: p.tracks, modified: p.modified }], null,
-                 function(error) { store.failed("Cannot save the playlist: " + error); });
+        db.merge([{ _id: p._id, _kind: kind, name: p.name, tracks: p.tracks, modified: p.modified }], function(reply) {
+            if (reply.returnValue === false)
+                store.failed("Cannot save the playlist: " + reply.errorText);
+        });
     }
 
     function add(id, paths) {
@@ -159,9 +179,13 @@ Item {
     }
 
     function remove(id) {
-        db.del([id], function() {
+        db.del([id], function(reply) {
+            if (reply.returnValue === false) {
+                store.failed("Cannot delete the playlist: " + reply.errorText);
+                return;
+            }
             store.playlists = store.playlists.filter(function(p) { return p._id !== id; });
             store.revision++;
-        }, function(error) { store.failed("Cannot delete the playlist: " + error); });
+        });
     }
 }
