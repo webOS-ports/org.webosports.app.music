@@ -623,6 +623,23 @@ Item {
             page.text = "sun";
             tryVerify(function() { return page.result.songs.length === 3; });
             screenshot("search");
+            // A song tapped: it plays, and the keyboard goes with the field's focus.
+            var field = findByName(page, "searchField");
+            field.forceActiveFocus(); // as on opening, also when the test window is not active
+            verify(field.focus);
+            var list = findByName(page, "searchResults");
+            var at = -1;
+            for (var i = 0; i < page.rows.length && at < 0; i++)
+                if (page.rows[i].song)
+                    at = i;
+            verify(at >= 0);
+            list.positionViewAtIndex(at, ListView.Contain);
+            waitForRendering(list);
+            mouseClick(list.itemAtIndex(at).item);
+            verify(!field.focus);
+            compare(root.app.player.current.path, page.rows[at].song.path);
+            root.app.player.pause();
+            field.forceActiveFocus();
             page.text = "blue";
             compare(page.result.artists[0].name, "Blue Band");
             // Just Type's Search Music action.

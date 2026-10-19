@@ -92,6 +92,13 @@ Item {
 
     Component.onCompleted: field.forceActiveFocus()
 
+    // Done typing: a result picked, Enter, or the list scrolled. The keyboard
+    // goes with the field's focus.
+    function dismissKeyboard() {
+        field.focus = false;
+        Qt.inputMethod.hide();
+    }
+
     TextField {
         id: field
         objectName: "searchField"
@@ -102,6 +109,7 @@ Item {
         placeholderText: "Artists, albums, songs"
         inputMethodHints: Qt.ImhNoPredictiveText
         onTextChanged: streamDebounce.restart()
+        onAccepted: page.dismissKeyboard()
     }
 
     ListView {
@@ -113,6 +121,7 @@ Item {
         width: parent.width
         clip: true
         model: page.rows
+        onMovementStarted: page.dismissKeyboard()
         delegate: Loader {
             required property var modelData
             width: list.width
@@ -154,7 +163,7 @@ Item {
             theme: page.theme
             title: d.label || ""
             icon: "stream"
-            onClicked: appWindow.openStreamingService(d.more, field.text)
+            onClicked: { page.dismissKeyboard(); appWindow.openStreamingService(d.more, field.text); }
         }
     }
     Component {
@@ -168,7 +177,7 @@ Item {
             artAlbum: a ? a.artAlbum : ""
             icon: "artist"
             round: true
-            onClicked: appWindow.openArtist(a)
+            onClicked: { page.dismissKeyboard(); appWindow.openArtist(a); }
         }
     }
     Component {
@@ -182,8 +191,8 @@ Item {
             artAlbum: al ? al.title : ""
             icon: "album"
             showMenu: true
-            onClicked: appWindow.openAlbum(al)
-            onMenuRequested: appWindow.albumMenu(al)
+            onClicked: { page.dismissKeyboard(); appWindow.openAlbum(al); }
+            onMenuRequested: { page.dismissKeyboard(); appWindow.albumMenu(al); }
         }
     }
     Component {
@@ -194,8 +203,11 @@ Item {
             theme: page.theme
             playing: song !== null && appWindow.player.current !== null && appWindow.player.current.path === song.path
             subtitle: song ? (song.remote ? song.artist : song.artist + " \u2014 " + song.album) : ""
-            onClicked: appWindow.player.playTracks(d.remoteTracks || page.result.songs, d.index, false)
-            onMenuRequested: appWindow.songMenu(song, null)
+            onClicked: {
+                page.dismissKeyboard();
+                appWindow.player.playTracks(d.remoteTracks || page.result.songs, d.index, false);
+            }
+            onMenuRequested: { page.dismissKeyboard(); appWindow.songMenu(song, null); }
         }
     }
 }
