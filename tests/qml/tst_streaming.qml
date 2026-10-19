@@ -262,6 +262,30 @@ Item {
             player.pause();
         }
 
+        // A long track carries on where it was left (resumeLookup), playing
+        // or paused, also when it has to be resolved first.
+        function test_resume_point_is_kept() {
+            root.answers["POST /provider/jamendo/resolve"] = [200, { url: fileUrl("Various/Summer Mix/02 Cool Cats - Sun.ogg") }];
+            player.resumeLookup = function(track) { return 1500; };
+            var tracks = [{ path: fileUrl("Various/Summer Mix/01 Ana Ray - Sun.ogg").replace(/^file:\/\//, "").split("/").map(decodeURIComponent).join("/"),
+                            title: "File" },
+                          { path: "jamendo:9", title: "Streamed", remote: true }];
+            for (var i = 0; i < tracks.length; i++) {
+                // Paused: only the seek brings it there.
+                player.playTracks([tracks[i]], 0, false);
+                player.pause();
+                tryVerify(function() { return player.active.seekable && player.active.position >= 1400; }, 5000,
+                          tracks[i].title + " paused at " + player.active.position);
+                // Playing: within the first second it is past the resume point.
+                player.playTracks([tracks[i]], 0, false);
+                tryVerify(function() { return player.playing; }, 5000);
+                tryVerify(function() { return player.active.position >= 1500; }, 1000,
+                          tracks[i].title + " playing at " + player.active.position);
+            }
+            player.resumeLookup = null;
+            player.pause();
+        }
+
         function test_spotify_goes_through_librespot() {
             root.answers["POST /player/load"] = [200, { ok: true, duration_ms: 200000 }];
             root.answers["POST /player/pause"] = [200, { ok: true }];

@@ -422,6 +422,13 @@ Item {
         });
     }
 
+    function _applyPendingSeek() {
+        if (_pendingSeek > 0 && active.seekable && current && active.path === current.path) {
+            active.seek(_pendingSeek);
+            _pendingSeek = -1;
+        }
+    }
+
     function _finishCurrent(completed) {
         var track = current;
         if (!track)
@@ -672,10 +679,11 @@ Item {
             }
         }
         function onSeekableChanged() {
-            if (player.active.seekable && player._pendingSeek > 0) {
-                player.active.seek(player._pendingSeek);
-                player._pendingSeek = -1;
-            }
+            // Qt's FFmpeg backend says seekable a moment before it can
+            // seek: a seek made in this signal is lost, and the track
+            // starts at 0.
+            if (player.active.seekable && player._pendingSeek > 0)
+                Qt.callLater(player._applyPendingSeek);
         }
     }
 }
