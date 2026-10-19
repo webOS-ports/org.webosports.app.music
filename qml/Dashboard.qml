@@ -60,7 +60,18 @@ WebOSWindow {
         _shown = true;
     }
 
-    onVisibleChanged: if (!visible && _shown) dashboard.dismissed()
+    // Swiped away, the shell closes the window (luna-next-cardshell's
+    // closeWindow): Eos.Window says so with windowCloseRequested and lets the
+    // window go without its visible turning false. Hidden is the other way.
+    onWindowCloseRequested: _dismiss()
+    onVisibleChanged: if (!visible) _dismiss()
+
+    function _dismiss() {
+        if (!_shown)
+            return;
+        _shown = false;
+        dashboard.dismissed();
+    }
 
     MouseArea {
         anchors.fill: parent

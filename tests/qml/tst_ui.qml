@@ -283,6 +283,16 @@ Item {
             dash.visible = false;
             compare(spy.count, 1);
             dash.destroy();
+            // As the shell does it on the device: a close request, the window
+            // going without turning invisible. Once, also if it is hidden after.
+            dash = c.createObject(null, { player: root.app.player, theme: root.app.theme });
+            spy.clear();
+            spy.target = dash;
+            dash.windowCloseRequested(null);
+            compare(spy.count, 1);
+            dash.visible = false;
+            compare(spy.count, 1);
+            dash.destroy();
         }
 
         function test_99_all_sizes() {
