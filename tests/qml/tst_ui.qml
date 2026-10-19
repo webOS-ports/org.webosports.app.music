@@ -162,6 +162,57 @@ Item {
             lp.category = "albums";
         }
 
+        // A streamed track whose service has more than one format: its
+        // badge under the seek bar, the Quality sheet, and the pick kept
+        // for that service.
+        function fakeQuality(method, url, body, done) {
+            var path = url.replace(/^http:\/\/127\.0\.0\.1:8730/, "").replace(/\?.*$/, "");
+            if (method === "GET" && path === "/providers")
+                return done(200, { providers: [{ id: "soundcloud", name: "SoundCloud" }] });
+            if (method === "POST" && path === "/provider/soundcloud/resolve") {
+                var f = body.format || "AAC 160";
+                return done(200, { url: "file://" + (root.fixtures + (f === "AAC 96" ? "/Various/Summer Mix/02 Cool Cats - Sun.ogg"
+                                                                                       : "/Various/Summer Mix/01 Ana Ray - Sun.ogg"))
+                                        .split("/").map(encodeURIComponent).join("/"),
+                                   format: f, formats: ["AAC 160", "AAC 96"] });
+            }
+            done(404, { error: "no" });
+        }
+
+        function test_18_streaming_quality() {
+            root.app.prefs.streamFormats = "{}";
+            root.app.streaming.transport = fakeQuality;
+            root.app.streaming.refresh();
+            tryVerify(function() { return root.app.streaming.available; });
+            root.app.player.playTracks([{ path: "soundcloud:1", title: "Cloud Song", artist: "Someone", album: "SoundCloud",
+                                          provider: "soundcloud", remote: true, duration: 3000 }], 0, false);
+            tryVerify(function() { return root.app.player.playing; }, 5000);
+            root.app.openNowPlaying();
+            var np = findByName(root.app.contentItem, "nowPlaying");
+            tryCompare(np, "y", 0, 3000); // slid in
+            var badge = findByName(np, "formatBadge");
+            tryVerify(function() { return badge.visible; }, 3000);
+            screenshot("now-playing-quality");
+            mouseClick(badge);
+            verify(root.app.sheet.shown);
+            wait(400); // the sheet slides up
+            compare(root.app.sheet.title, "Quality");
+            compare(root.app.sheet.subtitle, "SoundCloud");
+            compare(root.app.sheet.choices.map(function(c) { return c.label + (c.checked ? "*" : ""); }), ["AAC 160*", "AAC 96"]);
+            screenshot("quality-sheet");
+            root.app.sheet.choose(1);
+            tryVerify(function() { return root.app.player.currentFormat && root.app.player.currentFormat.format === "AAC 96"; }, 3000);
+            compare(JSON.parse(root.app.prefs.streamFormats), { soundcloud: "AAC 96" });
+            compare(root.app.streaming.preferredFormats.soundcloud, "AAC 96");
+            // A local file has no badge.
+            root.app.player.playTracks(root.app.library.lib.songs.slice(0, 1), 0, false);
+            tryVerify(function() { return !badge.visible; }, 3000);
+            root.app.player.clearQueue();
+            root.app.prefs.streamFormats = "{}";
+            root.app.closeNowPlaying();
+            settle();
+        }
+
         // Every main screen at every size the app has to look right at:
         // a phone (480x800, and the small 320x480), the Q25's square
         // (720x720), a tablet both ways (1024x768, 768x1024).

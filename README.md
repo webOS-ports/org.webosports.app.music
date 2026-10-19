@@ -89,6 +89,10 @@ Tablet (TouchPad, 1024x768):
   app plays it itself, so streams seek, take the volume, ReplayGain,
   crossfade and the sleep timer like files; Spotify plays through the
   daemon's librespot (Spotify Connect), driven by the app.
+- Where a service has a track in more than one format (SoundCloud's AAC 160
+  and 96, YouTube's AAC and Opus), Now Playing shows the one playing under
+  the seek bar; a tap offers the others, switches where the track is, and
+  keeps the choice for that service's next tracks.
 - Streamed tracks queue, favourite and go into playlists like files (a
   playlist keeps their title and cover); the queue keeps them across
   restarts.

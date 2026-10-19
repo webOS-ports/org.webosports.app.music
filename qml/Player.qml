@@ -50,6 +50,9 @@ Item {
     readonly property real position: _seekingTo >= 0 ? _seekingTo : active.position
     readonly property real duration: active.duration > 0 ? active.duration : (current ? (current.duration || 0) : 0)
     readonly property bool seekable: active.seekable
+    // { format, formats } of the streamed track playing, when its service
+    // has a choice of formats (switchFormat), else null.
+    readonly property var currentFormat: current && _formats[current.path] ? _formats[current.path] : null
 
     // --- settings (main.qml binds these to the preferences) --------------
     property real rate: 1.0
@@ -66,8 +69,9 @@ Item {
     property var gainLookup: null
     // function(track) -> ms to resume a long track at, or 0.
     property var resumeLookup: null
-    // function(track, done(url, error)): what plays a streamed track
-    // (StreamingStore.resolve). Files play from their path.
+    // function(track, done(url, error, formats), format): what plays a
+    // streamed track (StreamingStore.resolve), in format if given. Files
+    // play from their path.
     property var urlResolver: null
     // The HTTP calls of the music streaming service, for Spotify.
     property var streamingTransport: null
@@ -105,6 +109,8 @@ Item {
     property bool _completed: false
     property int _failures: 0
     property string _failedPath: ""
+    // { path: { format, formats } } of the playing and the preloaded track.
+    property var _formats: ({})
     // A start asked for before the track was loaded (seek to resume point).
     property real _pendingSeek: -1
     property bool _wantPlay: false
@@ -409,17 +415,62 @@ Item {
             _onFailed(active, "Streaming is not available.");
             return;
         }
-        urlResolver(track, function(url, error) {
+        urlResolver(track, function(url, error, formats) {
             if (serial !== player._startSerial)
                 return;
             if (!url) {
                 player._onFailed(player.active, error || "The track cannot be streamed.");
                 return;
             }
+            player._noteFormats(track.path, formats);
             player.active.load(track.path, url);
             if (player._wantPlay)
                 player.active.play();
         });
+    }
+
+    /* Plays the current streamed track in another of its formats (one of
+     * currentFormat.formats) from where it is. done(error), if given, is
+     * told how it went; when it cannot be had the old stream plays on. */
+    function switchFormat(format, done) {
+        var track = current;
+        var report = done || function() {};
+        if (!track || !currentFormat || currentFormat.formats.indexOf(format) < 0 || !urlResolver) {
+            report("This track has no other formats.");
+            return;
+        }
+        var at = position;
+        var andPlay = playing || _wantPlay;
+        var serial = ++_startSerial;
+        urlResolver(track, function(url, error, formats) {
+            if (serial !== player._startSerial)
+                return;
+            if (!url) {
+                report(error || "The track cannot be streamed in " + format + ".");
+                return;
+            }
+            player._noteFormats(track.path, formats);
+            // Engine.load keeps a track it already has: drop it first.
+            player.active.unload();
+            player.active.load(track.path, url);
+            player._pendingSeek = at > 0 ? at : -1;
+            player._wantPlay = andPlay;
+            if (andPlay)
+                player.active.play();
+            report("");
+        }, format);
+    }
+
+    // Keeps the formats of path, and of the playing and preloaded tracks.
+    function _noteFormats(path, formats) {
+        var kept = {};
+        for (var p in _formats) {
+            if (p !== path && ((current && p === current.path) || p === _preloadedPath))
+                kept[p] = _formats[p];
+        }
+        if (formats)
+            kept[path] = formats;
+        _formats = kept;
     }
 
     function _applyPendingSeek() {
@@ -565,14 +616,16 @@ Item {
         if (!urlResolver)
             return;
         var engine = standby;
-        urlResolver(track, function(url, error) {
+        urlResolver(track, function(url, error, formats) {
             // Still the one planned next, on the same engine?
             if (player._preloadedPos !== pos || player._preloadedPath !== track.path || player.standby !== engine)
                 return;
-            if (url)
+            if (url) {
+                player._noteFormats(track.path, formats);
                 engine.load(track.path, url);
-            else
+            } else {
                 player._preloadedPos = -1;
+            }
         });
     }
 

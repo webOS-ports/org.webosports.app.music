@@ -39,6 +39,8 @@ Settings {
     property bool resumeAfterCall: true
     // Tint the player with the colour of the playing track's cover.
     property bool followArt: true
+    // The streaming format picked per service, as JSON: { "soundcloud": "AAC 96" }.
+    property string streamFormats: "{}"
 
     // Where the library was left.
     property string lastCategory: "albums"
