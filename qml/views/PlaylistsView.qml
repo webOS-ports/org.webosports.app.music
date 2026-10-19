@@ -49,6 +49,15 @@ Item {
                        artPath: first ? (typeof first === "object" ? first.path : first) : "",
                        artUrl: first && typeof first === "object" ? (first.artUrl || "") : "" });
         });
+        // The user's playlists on their streaming services, as they are there.
+        appWindow.streaming.servicePlaylists.forEach(function(s) {
+            out.push({ kind: "header", name: s.name.toUpperCase() });
+            s.playlists.forEach(function(p) {
+                out.push({ kind: "service", provider: s.provider, playlist: p, name: p.name,
+                           count: p.tracks || 0, artUrl: p.thumbnail || "",
+                           owner: p.owner || "" });
+            });
+        });
         return out;
     }
 
@@ -98,13 +107,15 @@ Item {
                   : (modelData.id === "favorites" ? "heart" : "playlist")
             artPath: modelData.kind === "user" ? modelData.artPath : ""
             artAlbum: modelData.kind === "user" && modelData.artPath ? appWindow.library.trackFor(modelData.artPath).album : ""
-            artUrl: modelData.kind === "user" ? (modelData.artUrl || "") : ""
+            artUrl: modelData.kind === "user" || modelData.kind === "service" ? (modelData.artUrl || "") : ""
             showMenu: modelData.kind === "user"
             onClicked: {
                 if (modelData.kind === "new")
                     appWindow.newPlaylist([]);
                 else if (modelData.kind === "smart")
                     appWindow.openSmartPlaylist(modelData.id);
+                else if (modelData.kind === "service")
+                    appWindow.openServicePlaylist(modelData.provider, modelData.playlist);
                 else
                     appWindow.openPlaylist(modelData.id);
             }

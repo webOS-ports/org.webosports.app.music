@@ -215,6 +215,50 @@ Item {
             settle();
         }
 
+        // The user's Spotify playlists under their own, opened read only.
+        function test_18_streaming_playlists() {
+            root.app.streaming.transport = function(method, url, body, done) {
+                var path = url.replace(/^http:\/\/127\.0\.0\.1:8730/, "").replace(/\?.*$/, "");
+                if (path === "/providers")
+                    return done(200, { providers: [{ id: "spotify", name: "Spotify" }] });
+                if (path === "/provider/spotify/playlists")
+                    return done(200, { playlists: [{ id: "p1", name: "Road Trip", owner: "me", thumbnail: "", tracks: 2 }] });
+                if (path === "/provider/spotify/playlist")
+                    return done(200, { tracks: [
+                        { id: "a", provider: "spotify", title: "Highway", artist: "Band", album: "Roads", duration_ms: 3000, path: "spotify:track:a" },
+                        { id: "b", provider: "spotify", title: "Byway", artist: "Band", album: "Roads", duration_ms: 3000, path: "spotify:track:b" }] });
+                done(404, { error: "no" });
+            };
+            root.app.streaming.refresh();
+            tryVerify(function() { return root.app.streaming.servicePlaylists.length === 1; });
+            var lp = root.app.pageStack.get(0);
+            lp.category = "playlists";
+            wait(100);
+            var view = lp.currentView;
+            var row = -1;
+            for (var i = 0; i < view.rows.length; i++)
+                if (view.rows[i].kind === "service")
+                    row = i;
+            verify(row > 0);
+            compare(view.rows[row - 1].name, "SPOTIFY");
+            compare(view.rows[row].name, "Road Trip");
+            screenshot("playlists-spotify");
+            root.app.openServicePlaylist("spotify", view.rows[row].playlist);
+            settle();
+            var page = root.app.pageStack.currentItem;
+            compare(page.objectName, "servicePlaylistPage");
+            tryCompare(page, "loading", false);
+            compare(page.songs.length, 2);
+            compare(page.songs[0].title, "Highway");
+            verify(!page.canEdit);
+            screenshot("spotify-playlist");
+            root.app.pageStack.pop(null);
+            root.app.streaming.transport = function(method, url, body, done) { done(404, null); };
+            root.app.streaming.refresh();
+            tryVerify(function() { return root.app.streaming.servicePlaylists.length === 0; });
+            lp.category = "albums";
+        }
+
         function test_18_streaming_quality() {
             root.app.prefs.streamFormats = "{}";
             root.app.streaming.transport = fakeQuality;

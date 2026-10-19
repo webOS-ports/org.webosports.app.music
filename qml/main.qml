@@ -837,6 +837,25 @@ WebOSWindow {
         page.actions = [];
     }
 
+    // A playlist of the user's on a streaming service: as it is there, read
+    // only, its tracks fetched when it is opened.
+    function openServicePlaylist(providerId, playlist) {
+        var page = push("pages/TrackListPage.qml", {
+            title: playlist.name,
+            subtitle: streaming.providerName(providerId),
+            songs: [],
+            icon: "playlist"
+        });
+        page.objectName = "servicePlaylistPage";
+        page.loading = true;
+        streaming.playlistTracks(providerId, playlist.id, function(tracks, error) {
+            page.loading = false;
+            page.songs = tracks;
+            if (error)
+                notify(error);
+        });
+    }
+
     function openPlaylistFile(path) {
         var paths = playlistIO.read(path);
         var page = push("pages/TrackListPage.qml", {

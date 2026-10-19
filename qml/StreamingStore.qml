@@ -47,6 +47,13 @@ Item {
     // a service's tracks are asked for in it (each falls back to its best
     // format when it has no such one).
     property var preferredFormats: ({})
+    // The signed-in services' own playlists of the user, in the order of
+    // providers: [{ provider, name, playlists: [{ id, name, owner,
+    // thumbnail, tracks }] }]; a service without any is left out.
+    property var servicePlaylists: []
+    // The services the playlists were last asked for, so an update that
+    // changes nothing does not ask again; null: not asked since a refresh.
+    property var _playlistsAskedFor: null
 
     // function(method, url, body, done(httpStatus, jsonOrNull)): the HTTP
     // calls, replaceable by the tests.
@@ -87,11 +94,13 @@ Item {
     /* Asks the daemon and Accounts again (the app coming to the front, a
      * new account). */
     function refresh() {
+        _playlistsAskedFor = null;
         transport("GET", baseUrl + "/providers", null, function(code, data) {
             if (code !== 200 || !data || !Array.isArray(data.providers)) {
                 store._daemonProviders = null;
                 store.status = "unavailable";
                 store.providers = [];
+                store.servicePlaylists = [];
                 return;
             }
             store._daemonProviders = data.providers;
@@ -123,6 +132,49 @@ Item {
         if (!_daemonProviders)
             return;
         providers = Streaming.signedIn(_daemonProviders, _accountIds);
+        _loadPlaylists();
+    }
+
+    function _loadPlaylists() {
+        var ids = providers.map(function(p) { return p.id; });
+        if (ids.join(",") === _playlistsAskedFor)
+            return;
+        _playlistsAskedFor = ids.join(",");
+        var asked = _playlistsAskedFor;
+        var found = {};
+        var pending = ids.length;
+        var done = function() {
+            if (--pending > 0 || store._playlistsAskedFor !== asked)
+                return;
+            store.servicePlaylists = ids.filter(function(id) { return found[id] && found[id].length; })
+                                        .map(function(id) {
+                return { provider: id, name: store.providerName(id), playlists: found[id] };
+            });
+        };
+        if (pending === 0) {
+            servicePlaylists = [];
+            return;
+        }
+        ids.forEach(function(id) {
+            // 409: the service has no playlists to share.
+            transport("GET", baseUrl + "/provider/" + encodeURIComponent(id) + "/playlists", null, function(code, data) {
+                if (code === 200 && data && Array.isArray(data.playlists))
+                    found[id] = data.playlists.filter(function(p) { return p && p.id; });
+                done();
+            });
+        });
+    }
+
+    /* done(tracks, error): a service playlist's tracks, as the app's tracks. */
+    function playlistTracks(providerId, playlistId, done) {
+        transport("GET", baseUrl + "/provider/" + encodeURIComponent(providerId) + "/playlist?id="
+                  + encodeURIComponent(playlistId), null, function(code, data) {
+            if (code !== 200 || !data || !Array.isArray(data.tracks)) {
+                done([], (data && data.error) ? data.error : "The service did not answer.");
+                return;
+            }
+            done(data.tracks.map(function(t) { return Streaming.track(t, store.providerName(providerId)); }), "");
+        });
     }
 
     function provider(id) {
