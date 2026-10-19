@@ -179,6 +179,42 @@ Item {
             done(404, { error: "no" });
         }
 
+        // A streamed track has no lyrics of its own: they come from LRCLIB,
+        // credited; with the lookup off, none are asked for.
+        function test_18_streaming_lyrics() {
+            var asked = [];
+            root.app.lyricsLookup.transport = function(url, done) {
+                asked.push(url);
+                done(200, [{ duration: 3, syncedLyrics: "[00:00.50]Up in the cloud\n[00:01.50]Second line",
+                             plainLyrics: "Up in the cloud" }]);
+            };
+            root.app.streaming.transport = fakeQuality;
+            root.app.player.playTracks([{ path: "soundcloud:1", title: "Cloud Song", artist: "Someone", album: "SoundCloud",
+                                          provider: "soundcloud", remote: true, duration: 3000 }], 0, false);
+            root.app.openNowPlaying();
+            var np = findByName(root.app.contentItem, "nowPlaying");
+            tryCompare(np, "y", 0, 3000);
+            np.showLyrics = true;
+            tryCompare(np, "lyricsStatus", "found", 3000);
+            verify(np.lyricsText.indexOf("Up in the cloud") >= 0);
+            compare(asked.length, 1);
+            verify(asked[0].indexOf("track_name=Cloud%20Song&artist_name=Someone") > 0, asked[0]);
+            verify(findByName(np, "lyricsCredit").visible);
+            wait(300);
+            screenshot("lyrics-lrclib");
+            np.showLyrics = false;
+            root.app.prefs.lyricsOnline = false;
+            np.showLyrics = true;
+            compare(np.lyricsStatus, "none");
+            compare(asked.length, 1);
+            np.showLyrics = false;
+            root.app.prefs.lyricsOnline = true;
+            root.app.lyricsLookup.transport = function(url, done) { done(200, []); };
+            root.app.player.clearQueue();
+            root.app.closeNowPlaying();
+            settle();
+        }
+
         function test_18_streaming_quality() {
             root.app.prefs.streamFormats = "{}";
             root.app.streaming.transport = fakeQuality;
@@ -308,6 +344,8 @@ Item {
                 fail(c.errorString());
             root.app = c.createObject(null, { width: 480, height: 800, internalStorage: root.fixtures });
             verify(root.app, c.errorString());
+            // Never LRCLIB itself: songs without lyrics find none.
+            root.app.lyricsLookup.transport = function(url, done) { done(200, []); };
             tryCompare(root.app.library, "status", "ready", 5000);
             // TagReader fills in the lengths the indexer leaves at 0.
             tryVerify(function() { return !root.app.library.enriching; }, 10000);
@@ -444,6 +482,8 @@ Item {
             screenshot("now-playing");
             np.showLyrics = true;
             tryVerify(function() { return np.lyricsText.indexOf("Chorus line") >= 0; });
+            // The song's own lyrics: no credit.
+            verify(!findByName(np, "lyricsCredit").visible);
             screenshot("lyrics");
             np.showLyrics = false;
             mouseClick(findByName(np, "shuffleButton"));

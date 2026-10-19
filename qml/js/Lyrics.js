@@ -103,3 +103,46 @@ function lineAt(lines, positionMs) {
     }
     return found;
 }
+
+/*
+ * A title without what streaming services hang on it - "(Official Video)",
+ * "[HD]", "(Lyrics)", "- Remastered 2011" - for a second search when the
+ * whole one finds nothing.
+ */
+function searchTitle(title) {
+    var t = String(title || "");
+    t = t.replace(/\s*[(\[][^)\]]*\b(official|video|audio|lyrics?|visuali[sz]er|remaster(ed)?|hd|hq|4k|explicit)\b[^)\]]*[)\]]/ig, "");
+    t = t.replace(/\s+-\s+(\d{4}\s+)?remaster(ed)?\b.*$/i, "");
+    return t.trim();
+}
+
+/*
+ * The best of LRCLIB's search results for a song of durationMs (0 when
+ * not known): one within 3 s of it, timed lyrics before plain ones.
+ * { text, instrumental }, or null when none will do.
+ */
+function pickOnline(results, durationMs) {
+    if (!Array.isArray(results))
+        return null;
+    var best = null, bestScore = -1;
+    results.forEach(function(r) {
+        if (!r || typeof r !== "object")
+            return;
+        if (durationMs > 0 && typeof r.duration === "number" && Math.abs(r.duration * 1000 - durationMs) > 3000)
+            return;
+        var synced = typeof r.syncedLyrics === "string" && r.syncedLyrics.trim() !== "";
+        var plain = typeof r.plainLyrics === "string" && r.plainLyrics.trim() !== "";
+        var score = synced ? 3 : plain ? 2 : r.instrumental === true ? 1 : 0;
+        if (score > bestScore) {
+            best = r;
+            bestScore = score;
+        }
+    });
+    if (bestScore === 3)
+        return { text: best.syncedLyrics, instrumental: false };
+    if (bestScore === 2)
+        return { text: best.plainLyrics, instrumental: false };
+    if (bestScore === 1)
+        return { text: "", instrumental: true };
+    return null;
+}

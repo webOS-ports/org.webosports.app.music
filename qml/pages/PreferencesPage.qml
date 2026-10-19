@@ -115,6 +115,23 @@ AppPage {
 
             FormGroup {
                 Layout.fillWidth: true
+                title: "Lyrics"
+
+                LabelAndSwitch {
+                    objectName: "lyricsOnlineSwitch"
+                    label: "Look up lyrics online"
+                    checked: page.prefs.lyricsOnline
+                    onToggled: page.prefs.lyricsOnline = checked
+                }
+            }
+
+            ExplanationText {
+                Layout.fillWidth: true
+                text: "For a song without lyrics of its own - every streamed one, and files without lyrics in their tags or a .lrc file beside them - Music asks LRCLIB (lrclib.net), an open lyrics database, sending the song's artist and title."
+            }
+
+            FormGroup {
+                Layout.fillWidth: true
                 title: "Library"
 
                 LabelAndValue {

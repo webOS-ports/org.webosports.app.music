@@ -239,4 +239,36 @@ TestCase {
         compare(l.lines.map(function(x) { return x.text; }), ["Verse one", "", "Verse two"]);
         compare(Lyrics.parse("").lines.length, 0);
     }
+
+    function test_lyrics_search_title() {
+        compare(Lyrics.searchTitle("Get Lucky (Official Audio)"), "Get Lucky");
+        compare(Lyrics.searchTitle("One More Time [HD] (Lyrics)"), "One More Time");
+        compare(Lyrics.searchTitle("Heroes - 2017 Remaster"), "Heroes");
+        compare(Lyrics.searchTitle("Heroes - Remastered"), "Heroes");
+        // What belongs to the song stays.
+        compare(Lyrics.searchTitle("Ain\x27t It Fun (feat. Someone)"), "Ain\x27t It Fun (feat. Someone)");
+        compare(Lyrics.searchTitle("Song (Live at Wembley)"), "Song (Live at Wembley)");
+        compare(Lyrics.searchTitle(""), "");
+    }
+
+    // LRCLIB search results as it answers them (shortened).
+    function test_lyrics_pick_online() {
+        var plain = { duration: 233, plainLyrics: "Plain line", syncedLyrics: null, instrumental: false };
+        var synced = { duration: 234, plainLyrics: "Plain", syncedLyrics: "[00:01.00]Timed line", instrumental: false };
+        var otherCut = { duration: 410, plainLyrics: "Extended", syncedLyrics: "[00:01.00]Extended", instrumental: false };
+        var instr = { duration: 233, plainLyrics: null, syncedLyrics: null, instrumental: true };
+        compare(Lyrics.pickOnline([plain, synced], 233000), { text: "[00:01.00]Timed line", instrumental: false });
+        compare(Lyrics.pickOnline([plain], 233000), { text: "Plain line", instrumental: false });
+        // Another cut of the song (a different length) is not this one.
+        compare(Lyrics.pickOnline([otherCut, plain], 233000), { text: "Plain line", instrumental: false });
+        compare(Lyrics.pickOnline([otherCut], 233000), null);
+        // Length not known: any will do.
+        compare(Lyrics.pickOnline([otherCut], 0), { text: "[00:01.00]Extended", instrumental: false });
+        compare(Lyrics.pickOnline([instr], 233000), { text: "", instrumental: true });
+        compare(Lyrics.pickOnline([instr, plain], 233000), { text: "Plain line", instrumental: false });
+        compare(Lyrics.pickOnline([{ duration: 233, plainLyrics: "  ", syncedLyrics: "" }], 233000), null);
+        compare(Lyrics.pickOnline([], 233000), null);
+        compare(Lyrics.pickOnline(null, 233000), null);
+        compare(Lyrics.pickOnline({ message: "not a list" }, 233000), null);
+    }
 }

@@ -40,6 +40,10 @@ Rectangle {
     property var sleepTimer
     property bool showLyrics: false
     property string lyricsText: ""
+    // Where they came from: "" the song itself (tags, .lrc), "LRCLIB" looked up.
+    property string lyricsSource: ""
+    // "searching", "found", "instrumental" or "none".
+    property string lyricsStatus: "none"
 
     signal closeRequested()
 
@@ -54,8 +58,28 @@ Rectangle {
     onTrackChanged: if (showLyrics) loadLyrics()
     onShowLyricsChanged: if (showLyrics) loadLyrics()
 
+    // The song's own lyrics; failing those, LRCLIB's (LyricsLookup).
     function loadLyrics() {
-        lyricsText = track ? (appWindow.library.tagReader.read(track.path).lyrics || "") : "";
+        var t = track;
+        var own = t && !t.remote ? (appWindow.library.tagReader.read(t.path).lyrics || "") : "";
+        lyricsText = own;
+        lyricsSource = "";
+        lyricsStatus = own !== "" ? "found" : "none";
+        if (own !== "" || !t || !appWindow.lyricsLookup.enabled)
+            return;
+        lyricsStatus = "searching";
+        appWindow.lyricsLookup.find(t, function(result) {
+            // Another song by the time the answer came.
+            if (!np.track || np.track.path !== t.path)
+                return;
+            if (!result) {
+                np.lyricsStatus = "none";
+                return;
+            }
+            np.lyricsText = result.text;
+            np.lyricsSource = result.instrumental ? "" : "LRCLIB";
+            np.lyricsStatus = result.instrumental ? "instrumental" : "found";
+        });
     }
 
     // The cover, blurred by scaling a tiny copy up, behind everything.
@@ -238,6 +262,9 @@ Rectangle {
             visible: np.showLyrics
             theme: np.theme
             text: np.lyricsText
+            source: np.lyricsSource
+            status: np.lyricsStatus
+            ownOnly: !(np.track && np.track.remote) && !appWindow.lyricsLookup.enabled
             position: np.player ? np.player.position : 0
             onSeekRequested: function(ms) { np.player.seek(ms); }
         }

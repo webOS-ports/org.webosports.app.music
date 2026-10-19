@@ -81,6 +81,7 @@ WebOSWindow {
     property alias stats: stats
     property alias playlists: playlists
     property alias streaming: streaming
+    property alias lyricsLookup: lyricsLookup
     property alias artCache: artCache
     property alias sleepTimer: sleepTimer
     property alias sheet: sheet
@@ -144,6 +145,11 @@ WebOSWindow {
                 return {};
             }
         }
+    }
+
+    LyricsLookup {
+        id: lyricsLookup
+        enabled: preferences.lyricsOnline
     }
 
     PlaylistIO {

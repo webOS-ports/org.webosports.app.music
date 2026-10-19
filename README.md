@@ -111,6 +111,9 @@ Tablet (TouchPad, 1024x768):
   hold Previous/Next to rewind or fast-forward, faster the longer.
 - Synced lyrics (LRC, embedded or a `.lrc` beside the file) following the
   music, tap a line to go there; plain lyrics scroll.
+- Songs without lyrics of their own - streamed ones, files without them -
+  get them from LRCLIB (lrclib.net) by artist and title, credited; it can
+  be switched off in Preferences.
 - Song info (tags, format, gains, play counts).
 
 **webOS**
@@ -150,7 +153,7 @@ Tablet (TouchPad, 1024x768):
     qml/PlaylistStore.qml     playlists (Db8Model)
     qml/StreamingStore.qml    the streaming services (daemon + Accounts)
     qml/SpotifyEngine.qml     Spotify through the daemon's librespot
-    qml/NowPlaying.qml        Now Playing; LyricsView.qml its lyrics
+    qml/NowPlaying.qml        Now Playing; LyricsView.qml its lyrics, LyricsLookup.qml LRCLIB's
     qml/Dashboard.qml         the dashboard
     qml/ExhibitionWindow.qml  exhibition's dock window; ExhibitionView.qml
     qml/pages, qml/views      library pages and the category views
