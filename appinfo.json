@@ -36,7 +36,7 @@
             }
         }
     },
-    "requiredPermissions": [ "accountsservice.operation", "application.operation", "database.operation", "sleep.operation", "systemsettings.query", "notification.operation" ],
+    "requiredPermissions": [ "accountsservice.operation", "application.operation", "database.operation", "sleep.operation", "systemsettings.query", "notification.operation", "mediacontroller.query" ],
     "mimeTypes": [
         { "mime": "audio/mpeg", "extension": "mp3" },
         { "mime": "audio/mp4", "extension": "m4a" },

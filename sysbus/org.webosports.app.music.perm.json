@@ -1,4 +1,4 @@
 {
-    "org.webosports.app.music": [ "accountsservice.operation", "application.operation", "database.operation", "sleep.operation", "systemsettings.query", "notification.operation" ],
-    "org.webosports.app.music-*": [ "accountsservice.operation", "application.operation", "database.operation", "sleep.operation", "systemsettings.query", "notification.operation" ]
+    "org.webosports.app.music": [ "accountsservice.operation", "application.operation", "database.operation", "sleep.operation", "systemsettings.query", "notification.operation", "mediacontroller.query" ],
+    "org.webosports.app.music-*": [ "accountsservice.operation", "application.operation", "database.operation", "sleep.operation", "systemsettings.query", "notification.operation", "mediacontroller.query" ]
 }
