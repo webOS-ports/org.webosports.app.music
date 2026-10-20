@@ -337,6 +337,17 @@ WebOSWindow {
         }
     }
 
+    // --- the headset's buttons ----------------------------------------------------
+
+    /* A media session of com.webos.service.mediacontroller: a Bluetooth
+     * headset's buttons reach the player in the background too, not only
+     * as media keys to the window in front (handleKey). */
+    MediaSession {
+        bus: service
+        appId: appWindow.appId
+        player: appWindow.player
+    }
+
     // --- launch parameters ------------------------------------------------------
 
     /* The status bar's app menu relaunches the app with "palm-command":

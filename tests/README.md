@@ -25,6 +25,12 @@ properties and the writing calls.
   and speed, the saved queue, and screenshots of every screen at 480x800,
   320x480, 720x720, 1024x768 and 768x1024 in `build/test-output/test-screens`.
 
+- `tst_mediasession.qml`: `qml/js/MediaSession.js` and MediaSession.qml
+  against a fake com.webos.service.mediacontroller and a fake player:
+  registering once, what is told to the service and when (play status,
+  metadata, activating when playing starts), each key event's action -
+  play and pause never a toggle - and a refusal or the service going
+  retried, the session ended with the app.
 - `tst_streaming.qml`: `qml/js/Streaming.js` (paths, track objects, which
   services count as signed in, what a playlist keeps, the queue keeping
   them), StreamingStore against a fake music streaming service (no daemon,
