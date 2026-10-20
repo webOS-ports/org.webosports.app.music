@@ -1,5 +1,13 @@
 # Music
 
+Music player app for LuneOS
+
+Summary
+-------
+The LuneOS music app, which will be the default music player app for the WebOS Ports LuneOS project.
+
+## Description
+
 The music player of LuneOS: the songs on the device by album, artist,
 genre, folder and playlist, played from a queue, with Now Playing, a
 dashboard while the card is away and an exhibition view for the dock.
