@@ -132,6 +132,23 @@ AppPage {
 
             FormGroup {
                 Layout.fillWidth: true
+                title: "Artists"
+
+                LabelAndSwitch {
+                    objectName: "artistOnlineSwitch"
+                    label: "Look up artists online"
+                    checked: page.prefs.artistOnline
+                    onToggled: page.prefs.artistOnline = checked
+                }
+            }
+
+            ExplanationText {
+                Layout.fillWidth: true
+                text: "About the artist, in Now Playing, comes from Wikidata and Wikipedia, and Deezer's public catalogue: Music sends them the artist's name. No account is needed."
+            }
+
+            FormGroup {
+                Layout.fillWidth: true
                 title: "Library"
 
                 LabelAndValue {

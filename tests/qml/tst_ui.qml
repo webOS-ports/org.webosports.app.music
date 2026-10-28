@@ -216,6 +216,66 @@ Item {
         }
 
         // The user's Spotify playlists under their own, opened read only.
+        // About the artist: in the cover's place, from the lookup, instead of
+        // the lyrics; the way to their songs when the library has some.
+        function test_18_streaming_artist() {
+            var asked = [];
+            root.app.artistLookup.transport = function(url, done) {
+                asked.push(url);
+                if (url.indexOf("wbsearchentities") > 0)
+                    return done(200, { search: [{ id: "Q1", label: "Ana Ray", description: "Dutch singer" }] });
+                if (url.indexOf("props=claims") > 0)
+                    return done(200, { entities: { Q1: { descriptions: { en: { value: "Dutch singer" } },
+                                                         sitelinks: { enwiki: { title: "Ana Ray" } },
+                                                         claims: { P569: [{ mainsnak: { datavalue: { value: { time: "+1990-03-04T00:00:00Z", precision: 11 } } } }] } } } });
+                if (url.indexOf("wikipedia.org") > 0)
+                    return done(200, { extract: "Ana Ray is a Dutch singer of summer songs." });
+                if (url.indexOf("deezer.com/search/artist") > 0)
+                    return done(200, { data: [{ id: 7, name: "Ana Ray", nb_fan: 4321 }] });
+                done(404, null);
+            };
+            var song = root.app.library.lib.songs.filter(function(s) { return s.artist === "Ana Ray"; })[0];
+            verify(song, "a song by Ana Ray in the fixtures");
+            root.app.player.playTracks([song], 0, false);
+            root.app.player.pause();
+            root.app.openNowPlaying();
+            var np = findByName(root.app.contentItem, "nowPlaying");
+            tryCompare(np, "y", 0, 3000);
+            np.showLyrics = true;
+            mouseClick(findByName(np, "artistButton"));
+            verify(np.showArtist);
+            verify(!np.showLyrics, "the lyrics make way");
+            tryCompare(np, "artistStatus", "found", 3000);
+            compare(findByName(np, "artistName").text, "Ana Ray");
+            compare(findByName(np, "artistFans").text, "4.3K fans on Deezer");
+            compare(findByName(np, "artistBio").text, "Ana Ray is a Dutch singer of summer songs.");
+            verify(findByName(np, "artistLibraryButton").visible);
+            verify(!findByName(np, "nowPlayingCover").visible);
+            wait(300);
+            screenshot("nowplaying-artist");
+            mouseClick(findByName(np, "artistLibraryButton"));
+            tryCompare(root.app, "nowPlayingOpen", false, 3000);
+            compare(root.app.pageStack.currentItem.objectName, "artistPage");
+            root.app.openNowPlaying();
+            tryCompare(np, "y", 0, 3000);
+            np.showLyrics = true;
+            verify(!np.showArtist, "the artist makes way for the lyrics");
+            np.showLyrics = false;
+            // Off: nothing asked, and said why.
+            var count = asked.length;
+            root.app.prefs.artistOnline = false;
+            np.showArtist = true;
+            compare(np.artistStatus, "off");
+            compare(asked.length, count);
+            np.showArtist = false;
+            root.app.prefs.artistOnline = true;
+            root.app.artistLookup.transport = function(url, done) { done(200, {}); };
+            root.app.player.clearQueue();
+            root.app.closeNowPlaying();
+            root.app.pageStack.pop(null);
+            settle();
+        }
+
         function test_18_streaming_playlists() {
             root.app.streaming.transport = function(method, url, body, done) {
                 var path = url.replace(/^http:\/\/127\.0\.0\.1:8730/, "").replace(/\?.*$/, "");
@@ -400,6 +460,8 @@ Item {
             verify(root.app, c.errorString());
             // Never LRCLIB itself: songs without lyrics find none.
             root.app.lyricsLookup.transport = function(url, done) { done(200, []); };
+            // Nor Wikidata, Wikipedia or Deezer: nobody is known.
+            root.app.artistLookup.transport = function(url, done) { done(200, {}); };
             tryCompare(root.app.library, "status", "ready", 5000);
             // TagReader fills in the lengths the indexer leaves at 0.
             tryVerify(function() { return !root.app.library.enriching; }, 10000);

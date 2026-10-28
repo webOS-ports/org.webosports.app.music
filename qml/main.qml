@@ -82,6 +82,7 @@ WebOSWindow {
     property alias playlists: playlists
     property alias streaming: streaming
     property alias lyricsLookup: lyricsLookup
+    property alias artistLookup: artistLookup
     property alias artCache: artCache
     property alias sleepTimer: sleepTimer
     property alias sheet: sheet
@@ -150,6 +151,11 @@ WebOSWindow {
     LyricsLookup {
         id: lyricsLookup
         enabled: preferences.lyricsOnline
+    }
+
+    ArtistLookup {
+        id: artistLookup
+        enabled: preferences.artistOnline
     }
 
     PlaylistIO {
@@ -636,6 +642,8 @@ WebOSWindow {
                 if (event.key === Qt.Key_Escape) {
                     if (showLyrics)
                         showLyrics = false;
+                    else if (showArtist)
+                        showArtist = false;
                     else
                         appWindow.closeNowPlaying();
                     event.accepted = true;

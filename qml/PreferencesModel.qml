@@ -41,6 +41,8 @@ Settings {
     property bool followArt: true
     // Lyrics from LRCLIB for songs without their own.
     property bool lyricsOnline: true
+    // Who the playing artist is, from Wikidata, Wikipedia and Deezer.
+    property bool artistOnline: true
     // The streaming format picked per service, as JSON: { "soundcloud": "AAC 96" }.
     property string streamFormats: "{}"
 
