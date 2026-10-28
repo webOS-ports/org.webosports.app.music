@@ -216,6 +216,121 @@ Item {
         }
 
         // The user's Spotify playlists under their own, opened read only.
+        // About the artist: in the cover's place, from the lookup, instead of
+        // the lyrics; the way to their songs when the library has some.
+        function test_18_streaming_artist() {
+            var asked = [];
+            var photo = "";
+            root.app.artistLookup.transport = function(url, done) {
+                asked.push(url);
+                if (url.indexOf("wbsearchentities") > 0)
+                    return done(200, { search: [{ id: "Q1", label: "Ana Ray", description: "Dutch singer" }] });
+                if (url.indexOf("props=claims") > 0)
+                    return done(200, { entities: { Q1: { descriptions: { en: { value: "Dutch singer" } },
+                                                         sitelinks: { enwiki: { title: "Ana Ray" } },
+                                                         claims: { P569: [{ mainsnak: { datavalue: { value: { time: "+1990-03-04T00:00:00Z", precision: 11 } } } }] } } } });
+                if (url.indexOf("wikipedia.org") > 0)
+                    return done(200, { extract: "Ana Ray is a Dutch singer of summer songs." });
+                if (url.indexOf("deezer.com/search/artist") > 0)
+                    return done(200, { data: [{ id: 7, name: "Ana Ray", nb_fan: 4321, picture_big: photo }] });
+                done(404, null);
+            };
+            var song = root.app.library.lib.songs.filter(function(s) { return s.artist === "Ana Ray"; })[0];
+            verify(song, "a song by Ana Ray in the fixtures");
+            root.app.player.playTracks([song], 0, false);
+            root.app.player.pause();
+            root.app.openNowPlaying();
+            var np = findByName(root.app.contentItem, "nowPlaying");
+            tryCompare(np, "y", 0, 3000);
+            np.showLyrics = true;
+            mouseClick(findByName(np, "artistButton"));
+            verify(np.showArtist);
+            verify(!np.showLyrics, "the lyrics make way");
+            tryCompare(np, "artistStatus", "found", 3000);
+            compare(findByName(np, "artistName").text, "Ana Ray");
+            compare(findByName(np, "artistFans").text, "4.3K fans on Deezer");
+            compare(findByName(np, "artistBio").text, "Ana Ray is a Dutch singer of summer songs.");
+            verify(findByName(np, "artistLibraryButton").visible);
+            verify(!findByName(np, "nowPlayingCover").visible);
+            // Without a photo the name is all there, not cut at the top.
+            var flick = findByName(np, "artistFlick");
+            var label = findByName(np, "artistName");
+            verify(label.parent.mapToItem(flick, 0, 0).y >= 0, "the name block starts inside the panel");
+            verify(!findByName(np, "artistPhoto").visible);
+            // With one, it shows.
+            np.showArtist = false;
+            root.app.artistLookup._found = {};
+            photo = Qt.resolvedUrl("../fixtures/cover-red.jpg").toString();
+            np.showArtist = true;
+            tryCompare(np, "artistStatus", "found", 3000);
+            tryVerify(function() { return findByName(np, "artistPhoto").visible; }, 3000);
+            verify(findByName(np, "artistHeader").height > 150, "the photo gives the header its height");
+            verify(label.parent.mapToItem(flick, 0, 0).y >= 0);
+            wait(300);
+            screenshot("nowplaying-artist");
+            mouseClick(findByName(np, "artistLibraryButton"));
+            tryCompare(root.app, "nowPlayingOpen", false, 3000);
+            compare(root.app.pageStack.currentItem.objectName, "artistPage");
+            root.app.openNowPlaying();
+            tryCompare(np, "y", 0, 3000);
+            np.showLyrics = true;
+            verify(!np.showArtist, "the artist makes way for the lyrics");
+            np.showLyrics = false;
+            // Off: nothing asked, and said why.
+            var count = asked.length;
+            root.app.prefs.artistOnline = false;
+            np.showArtist = true;
+            compare(np.artistStatus, "off");
+            compare(asked.length, count);
+            np.showArtist = false;
+            root.app.prefs.artistOnline = true;
+            root.app.artistLookup.transport = function(url, done) { done(200, {}); };
+            root.app.player.clearQueue();
+            root.app.closeNowPlaying();
+            root.app.pageStack.pop(null);
+            settle();
+        }
+
+        // A streamed artist the library does not have: tapped, their name is
+        // searched on the track's service, results and no keyboard; one whose
+        // album has their name is still an artist (not the service's stand-in).
+        function test_18_streaming_artist_tap() {
+            var searched = [];
+            root.app.streaming.transport = function(method, url, body, done) {
+                var path = url.replace(root.app.streaming.baseUrl, "");
+                if (path === "/providers")
+                    return done(200, { providers: [{ id: "tidal", name: "Tidal" }] });
+                if (path.indexOf("/provider/tidal/search") === 0) {
+                    searched.push(decodeURIComponent(path.split("q=")[1].split("&")[0]));
+                    return done(200, { tracks: [{ id: "9", provider: "tidal", title: "Give Me One Reason",
+                                                  artist: "Tracy Chapman", album: "New Beginning", path: "tidal:9" }] });
+                }
+                done(404, { error: "no" });
+            };
+            root.app.streaming.refresh();
+            tryVerify(function() { return root.app.streaming.provider("tidal") !== null; }, 3000);
+            var tracy = { path: "tidal:3", title: "Fast Car", artist: "Tracy Chapman", album: "Tracy Chapman",
+                          provider: "tidal", remote: true, duration: 3000 };
+            root.app.player.playTracks([tracy], 0, false);
+            root.app.player.pause();
+            root.app.openNowPlaying();
+            var np = findByName(root.app.contentItem, "nowPlaying");
+            tryCompare(np, "y", 0, 3000);
+            compare(np.artistName, "Tracy Chapman");
+            root.app.openArtistOf(np.track);
+            tryCompare(root.app, "nowPlayingOpen", false, 3000);
+            var page = root.app.pageStack.currentItem;
+            compare(page.objectName, "streamSearchPage");
+            compare(page.text, "Tracy Chapman");
+            tryCompare(page, "searching", false, 3000);
+            tryVerify(function() { return page.results.length === 1; }, 3000);
+            compare(searched, ["Tracy Chapman"]);
+            verify(!Qt.inputMethod.visible);
+            root.app.player.clearQueue();
+            root.app.pageStack.pop(null);
+            settle();
+        }
+
         function test_18_streaming_playlists() {
             root.app.streaming.transport = function(method, url, body, done) {
                 var path = url.replace(/^http:\/\/127\.0\.0\.1:8730/, "").replace(/\?.*$/, "");
@@ -400,6 +515,8 @@ Item {
             verify(root.app, c.errorString());
             // Never LRCLIB itself: songs without lyrics find none.
             root.app.lyricsLookup.transport = function(url, done) { done(200, []); };
+            // Nor Wikidata, Wikipedia or Deezer: nobody is known.
+            root.app.artistLookup.transport = function(url, done) { done(200, {}); };
             tryCompare(root.app.library, "status", "ready", 5000);
             // TagReader fills in the lengths the indexer leaves at 0.
             tryVerify(function() { return !root.app.library.enriching; }, 10000);

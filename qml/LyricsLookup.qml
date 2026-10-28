@@ -17,6 +17,7 @@
 import QtQuick
 
 import "js/Lyrics.js" as Lyrics
+import "js/Streaming.js" as Streaming
 
 /*
  * Lyrics from LRCLIB (lrclib.net), an open database of them, for a song
@@ -32,6 +33,9 @@ QtObject {
     // function(url, done(httpStatus, jsonOrNull)): the HTTP call, replaceable
     // by the tests.
     property var transport: _xhr
+    // function(providerId) -> the service's name, to tell a streamed track
+    // without an artist (js/Streaming.js artistOf).
+    property var providerName: Streaming.displayName
 
     // What was found (or that nothing was) per song, so going back to one
     // does not ask again; a failed request is not kept.
@@ -86,10 +90,7 @@ QtObject {
     // A streamed track whose service gave no artist carries the service's
     // name as artist and album (js/Streaming.js): that is no artist to ask by.
     function _artistOf(track) {
-        var artist = String(track.artist || "");
-        if (track.remote && artist === String(track.album || ""))
-            return "";
-        return artist;
+        return Streaming.artistOf(track, track.remote ? providerName(track.provider) : "");
     }
 
     function _keep(key, result) {

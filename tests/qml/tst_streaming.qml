@@ -97,6 +97,19 @@ Item {
             compare(Streaming.track({ id: "7", provider: "jamendo" }).path, "jamendo:7");
         }
 
+        // The service's name standing in for an artist it did not give is no
+        // artist; a self-titled album's artist is.
+        function test_artist_of() {
+            var none = Streaming.track({ id: "1", provider: "youtube", title: "T" }, "YouTube Music");
+            compare(Streaming.artistOf(none, "YouTube Music"), "");
+            compare(Streaming.artistOf(Streaming.track({ id: "2", provider: "tidal", title: "T" }), ""), "");
+            var tracy = Streaming.track({ id: "3", provider: "tidal", title: "Fast Car", artist: "Tracy Chapman",
+                                          album: "Tracy Chapman" }, "Tidal");
+            compare(Streaming.artistOf(tracy, "Tidal"), "Tracy Chapman");
+            compare(Streaming.artistOf({ path: "/m/a.mp3", artist: "X", album: "X" }, ""), "X");
+            compare(Streaming.artistOf(null, ""), "");
+        }
+
         function test_signed_in() {
             var daemon = [{ id: "youtube", name: "YouTube" }, { id: "tidal", name: "Tidal" },
                           { id: "qobuz", name: "Qobuz" }, { id: "deezer", name: "Deezer" }];

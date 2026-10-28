@@ -21,6 +21,7 @@ import LunaNext.Common 0.1
 import "components"
 import "js/Art.js" as Art
 import "js/Library.js" as Library
+import "js/Streaming.js" as Streaming
 
 /*
  * Now Playing: the cover large, the track, where it is, and every control.
@@ -44,6 +45,11 @@ Rectangle {
     property string lyricsSource: ""
     // "searching", "found", "instrumental" or "none".
     property string lyricsStatus: "none"
+    // About the artist in the cover's place (ArtistView), instead of lyrics.
+    property bool showArtist: false
+    property var artistInfo: null
+    // "searching", "found", "none", "failed" or "off".
+    property string artistStatus: "none"
 
     signal closeRequested()
 
@@ -52,11 +58,55 @@ Rectangle {
     readonly property var format: player ? player.currentFormat : null
     readonly property bool landscape: width >= height
     readonly property bool favorite: track !== null && stats.revision >= 0 && stats.isFavorite(track.path)
+    // Who to look up: not a streamed track's service, standing in for an
+    // artist it did not give (js/Streaming.js), nor the library's "Unknown
+    // Artist".
+    readonly property string artistName: {
+        if (!track)
+            return "";
+        var name = track.remote ? Streaming.artistOf(track, appWindow.streaming.providerName(track.provider))
+                                : String(track.artist || track.albumArtist || "");
+        return name === Library.unknownArtist ? "" : name;
+    }
 
     color: theme.darkBackground
 
     onTrackChanged: if (showLyrics) loadLyrics()
-    onShowLyricsChanged: if (showLyrics) loadLyrics()
+    onShowLyricsChanged: {
+        if (showLyrics) {
+            showArtist = false;
+            loadLyrics();
+        }
+    }
+    onArtistNameChanged: if (showArtist) loadArtist()
+    onShowArtistChanged: {
+        if (showArtist) {
+            showLyrics = false;
+            loadArtist();
+        }
+    }
+
+    // Who the artist is, looked up (ArtistLookup).
+    function loadArtist() {
+        var name = artistName;
+        artistInfo = null;
+        if (name === "") {
+            artistStatus = "none";
+            return;
+        }
+        if (!appWindow.artistLookup.enabled) {
+            artistStatus = "off";
+            return;
+        }
+        artistStatus = "searching";
+        appWindow.artistLookup.find(name, function(info, failed) {
+            // Another artist by the time the answer came.
+            if (np.artistName !== name)
+                return;
+            np.artistInfo = info;
+            np.artistStatus = info ? "found" : (failed ? "failed" : "none");
+        });
+    }
 
     // The song's own lyrics; failing those, LRCLIB's (LyricsLookup).
     function loadLyrics() {
@@ -215,7 +265,7 @@ Rectangle {
             height: coverSize
             x: (parent.width - width) / 2 + swipe.offset
             anchors.verticalCenter: parent.verticalCenter
-            visible: !np.showLyrics
+            visible: !np.showLyrics && !np.showArtist
             path: np.track ? np.track.path : ""
             album: np.track ? np.track.album : ""
             artUrl: np.track && np.track.artUrl ? np.track.artUrl : ""
@@ -267,6 +317,20 @@ Rectangle {
             ownOnly: !(np.track && np.track.remote) && !appWindow.lyricsLookup.enabled
             position: np.player ? np.player.position : 0
             onSeekRequested: function(ms) { np.player.seek(ms); }
+        }
+
+        ArtistView {
+            objectName: "artistView"
+            anchors.fill: parent
+            anchors.margins: Units.gu(1)
+            visible: np.showArtist
+            theme: np.theme
+            artist: np.artistName
+            info: np.artistInfo
+            status: np.artistStatus
+            inLibrary: np.showArtist && np.artistName !== "" && !!appWindow.library.artist(np.artistName)
+            onLibraryRequested: appWindow.openArtistOf(np.track)
+            onRetryRequested: np.loadArtist()
         }
     }
 
@@ -497,6 +561,17 @@ Rectangle {
                 active: np.showLyrics
                 accent: np.theme.accent
                 onClicked: np.showLyrics = !np.showLyrics
+            }
+            IconButton {
+                objectName: "artistButton"
+                width: controls.btn
+                height: controls.btn
+                image: "artist"
+                label: "About the artist"
+                iconSize: Units.gu(2.6)
+                active: np.showArtist
+                accent: np.theme.accent
+                onClicked: np.showArtist = !np.showArtist
             }
             Item {
                 width: controls.btn * 1.25

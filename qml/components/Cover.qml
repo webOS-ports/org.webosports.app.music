@@ -36,6 +36,11 @@ Rectangle {
     property string placeholderIcon: "note"
     readonly property url placeholder: Qt.resolvedUrl((onLight ? "../images/dark/" : "../images/") + placeholderIcon + ".svg")
     readonly property bool hasArt: image.status === Image.Ready && image.implicitWidth > 1
+    // A streamed cover shown large is asked for large (Art.sized); if the
+    // service has no such size after all, the thumbnail.
+    readonly property string _sizedUrl: Art.sized(artUrl, Math.max(width, height))
+    property bool _sizedFailed: false
+    onArtUrlChanged: _sizedFailed = false
 
     color: onLight ? "#c4c4c4" : "#2b2b2b"
     radius: Math.max(2, width / 40)
@@ -55,7 +60,8 @@ Rectangle {
     Image {
         id: image
         anchors.fill: parent
-        source: Art.source(cover.path, cover.album, cover.artUrl)
+        source: Art.source(cover.path, cover.album, cover._sizedFailed ? cover.artUrl : cover._sizedUrl)
+        onStatusChanged: if (status === Image.Error && cover._sizedUrl !== cover.artUrl) cover._sizedFailed = true
         sourceSize.width: Math.ceil(cover.width)
         sourceSize.height: Math.ceil(cover.height)
         fillMode: Image.PreserveAspectCrop
