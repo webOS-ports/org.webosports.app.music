@@ -796,12 +796,31 @@ WebOSWindow {
         page.objectName = "artistPage";
     }
 
+    /* The artist of a track: theirs in the library; else, for a streamed
+     * track, its service searched for them; else the search, by their name. */
     function openArtistOf(track) {
         if (!track)
             return;
         var artist = library.artist(track.artist) || library.artist(track.albumArtist || "");
-        if (artist)
+        if (artist) {
             openArtist(artist);
+            return;
+        }
+        var name = track.remote ? Streaming.artistOf(track, streaming.providerName(track.provider))
+                                : String(track.artist || "");
+        if (name === "" || name === Library.unknownArtist)
+            return;
+        var page;
+        if (track.remote && streaming.provider(track.provider)) {
+            openStreamingService(track.provider, name);
+            page = stack.currentItem;
+        } else {
+            openSearch();
+            page = stack.currentItem;
+            page.text = name;
+        }
+        // Results to look at, not a name to type.
+        page.dismissKeyboard();
     }
 
     function openGenre(genre) {

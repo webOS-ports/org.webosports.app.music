@@ -291,6 +291,46 @@ Item {
             settle();
         }
 
+        // A streamed artist the library does not have: tapped, their name is
+        // searched on the track's service, results and no keyboard; one whose
+        // album has their name is still an artist (not the service's stand-in).
+        function test_18_streaming_artist_tap() {
+            var searched = [];
+            root.app.streaming.transport = function(method, url, body, done) {
+                var path = url.replace(root.app.streaming.baseUrl, "");
+                if (path === "/providers")
+                    return done(200, { providers: [{ id: "tidal", name: "Tidal" }] });
+                if (path.indexOf("/provider/tidal/search") === 0) {
+                    searched.push(decodeURIComponent(path.split("q=")[1].split("&")[0]));
+                    return done(200, { tracks: [{ id: "9", provider: "tidal", title: "Give Me One Reason",
+                                                  artist: "Tracy Chapman", album: "New Beginning", path: "tidal:9" }] });
+                }
+                done(404, { error: "no" });
+            };
+            root.app.streaming.refresh();
+            tryVerify(function() { return root.app.streaming.provider("tidal") !== null; }, 3000);
+            var tracy = { path: "tidal:3", title: "Fast Car", artist: "Tracy Chapman", album: "Tracy Chapman",
+                          provider: "tidal", remote: true, duration: 3000 };
+            root.app.player.playTracks([tracy], 0, false);
+            root.app.player.pause();
+            root.app.openNowPlaying();
+            var np = findByName(root.app.contentItem, "nowPlaying");
+            tryCompare(np, "y", 0, 3000);
+            compare(np.artistName, "Tracy Chapman");
+            root.app.openArtistOf(np.track);
+            tryCompare(root.app, "nowPlayingOpen", false, 3000);
+            var page = root.app.pageStack.currentItem;
+            compare(page.objectName, "streamSearchPage");
+            compare(page.text, "Tracy Chapman");
+            tryCompare(page, "searching", false, 3000);
+            tryVerify(function() { return page.results.length === 1; }, 3000);
+            compare(searched, ["Tracy Chapman"]);
+            verify(!Qt.inputMethod.visible);
+            root.app.player.clearQueue();
+            root.app.pageStack.pop(null);
+            settle();
+        }
+
         function test_18_streaming_playlists() {
             root.app.streaming.transport = function(method, url, body, done) {
                 var path = url.replace(/^http:\/\/127\.0\.0\.1:8730/, "").replace(/\?.*$/, "");
