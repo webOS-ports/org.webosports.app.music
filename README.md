@@ -172,7 +172,8 @@ Tablet (TouchPad, 1024x768):
     MusicApp/                 the C++ plugin (TagLib)
     tests/                    gtest, QML tests, build matrix, analysis
     tools/                    device install and tests, host screenshots,
-                              the demo library (make-demo-library.sh)
+                              the demo library (make-demo-library.sh),
+                              the icon (make-icon.sh)
     docs/screenshots/         the screenshots above
 
 ## Depends on
@@ -201,6 +202,15 @@ Tablet (TouchPad, 1024x768):
 On LuneOS the recipe (`org.webosports.app.music.bb`) builds and installs it.
 `tests/README.md` has the tests, the six-way build matrix, the static
 analysis and the device tools.
+
+## Icon
+
+`icon.svg`, drawn into `icon.png` and `icon-256x256.png` by
+`tools/make-icon.sh` with Qt's SVG renderer. It redraws the legacy webOS
+Music icon (the CD case with its notes, the disc behind it), measured
+against the original 256x256 PNG, with radio waves in the case's top
+right corner for streaming. The tilt and perspective are worked into the
+outlines, since Qt's SVG renderer has no clip paths or filters.
 
 ## Licence
 
