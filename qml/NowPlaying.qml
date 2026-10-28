@@ -21,6 +21,7 @@ import LunaNext.Common 0.1
 import "components"
 import "js/Art.js" as Art
 import "js/Library.js" as Library
+import "js/Streaming.js" as Streaming
 
 /*
  * Now Playing: the cover large, the track, where it is, and every control.
@@ -57,13 +58,14 @@ Rectangle {
     readonly property var format: player ? player.currentFormat : null
     readonly property bool landscape: width >= height
     readonly property bool favorite: track !== null && stats.revision >= 0 && stats.isFavorite(track.path)
-    // Who to look up: a streamed track whose service gave no artist carries
-    // the service's name as artist and album (js/Streaming.js) - no one;
-    // nor is the library's "Unknown Artist".
+    // Who to look up: not a streamed track's service, standing in for an
+    // artist it did not give (js/Streaming.js), nor the library's "Unknown
+    // Artist".
     readonly property string artistName: {
-        if (!track || (track.remote && track.artist === track.album))
+        if (!track)
             return "";
-        var name = String(track.artist || track.albumArtist || "");
+        var name = track.remote ? Streaming.artistOf(track, appWindow.streaming.providerName(track.provider))
+                                : String(track.artist || track.albumArtist || "");
         return name === Library.unknownArtist ? "" : name;
     }
 
@@ -328,6 +330,7 @@ Rectangle {
             status: np.artistStatus
             inLibrary: np.showArtist && np.artistName !== "" && !!appWindow.library.artist(np.artistName)
             onLibraryRequested: appWindow.openArtistOf(np.track)
+            onRetryRequested: np.loadArtist()
         }
     }
 

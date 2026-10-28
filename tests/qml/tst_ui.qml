@@ -220,6 +220,7 @@ Item {
         // the lyrics; the way to their songs when the library has some.
         function test_18_streaming_artist() {
             var asked = [];
+            var photo = "";
             root.app.artistLookup.transport = function(url, done) {
                 asked.push(url);
                 if (url.indexOf("wbsearchentities") > 0)
@@ -231,7 +232,7 @@ Item {
                 if (url.indexOf("wikipedia.org") > 0)
                     return done(200, { extract: "Ana Ray is a Dutch singer of summer songs." });
                 if (url.indexOf("deezer.com/search/artist") > 0)
-                    return done(200, { data: [{ id: 7, name: "Ana Ray", nb_fan: 4321 }] });
+                    return done(200, { data: [{ id: 7, name: "Ana Ray", nb_fan: 4321, picture_big: photo }] });
                 done(404, null);
             };
             var song = root.app.library.lib.songs.filter(function(s) { return s.artist === "Ana Ray"; })[0];
@@ -251,6 +252,20 @@ Item {
             compare(findByName(np, "artistBio").text, "Ana Ray is a Dutch singer of summer songs.");
             verify(findByName(np, "artistLibraryButton").visible);
             verify(!findByName(np, "nowPlayingCover").visible);
+            // Without a photo the name is all there, not cut at the top.
+            var flick = findByName(np, "artistFlick");
+            var label = findByName(np, "artistName");
+            verify(label.parent.mapToItem(flick, 0, 0).y >= 0, "the name block starts inside the panel");
+            verify(!findByName(np, "artistPhoto").visible);
+            // With one, it shows.
+            np.showArtist = false;
+            root.app.artistLookup._found = {};
+            photo = Qt.resolvedUrl("../fixtures/cover-red.jpg").toString();
+            np.showArtist = true;
+            tryCompare(np, "artistStatus", "found", 3000);
+            tryVerify(function() { return findByName(np, "artistPhoto").visible; }, 3000);
+            verify(findByName(np, "artistHeader").height > 150, "the photo gives the header its height");
+            verify(label.parent.mapToItem(flick, 0, 0).y >= 0);
             wait(300);
             screenshot("nowplaying-artist");
             mouseClick(findByName(np, "artistLibraryButton"));

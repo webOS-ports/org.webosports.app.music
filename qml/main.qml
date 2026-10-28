@@ -151,6 +151,7 @@ WebOSWindow {
     LyricsLookup {
         id: lyricsLookup
         enabled: preferences.lyricsOnline
+        providerName: function(id) { return streaming.providerName(id); }
     }
 
     ArtistLookup {

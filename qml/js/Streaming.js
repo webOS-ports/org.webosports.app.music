@@ -80,6 +80,20 @@ function track(t, providerName) {
     };
 }
 
+/* A streamed track's artist, "" when its service gave none: track() then
+ * puts the service's name as artist and album. An artist whose album has
+ * their name ("Tracy Chapman" by Tracy Chapman) is an artist.
+ * providerName: the service's name as the daemon gave it, if known. */
+function artistOf(t, providerName) {
+    var artist = String(t && t.artist || "");
+    if (!t || !t.remote || artist !== String(t.album || ""))
+        return artist;
+    var provider = t.provider || (split(t.path) ? split(t.path).provider : "");
+    if (artist === displayName(provider) || (providerName && artist === providerName))
+        return "";
+    return artist;
+}
+
 /* A resolve's answer ({ url, format, formats }) as { format, formats }, the
  * format it plays in among the ones the track has; null when the service did
  * not say (it has no choice). */

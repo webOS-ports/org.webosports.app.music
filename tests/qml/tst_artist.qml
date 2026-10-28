@@ -40,9 +40,10 @@ TestCase {
         done(404, null);
     }
 
+    property var transportOverride: null
     ArtistLookup {
         id: lookup
-        transport: fake
+        transport: function(url, done) { (transportOverride || fake)(url, done); }
         language: "en"
     }
 
@@ -158,7 +159,29 @@ TestCase {
         compare(r.info, null);
         compare(r.failed, true);
         find("Queen");
-        compare(asked.length, 2);
+        compare(asked.length, 4, "each sent twice, and asked again");
+    }
+
+    // Wikimedia's odd 503: sent once more, and then it answers.
+    function test_a_503_is_sent_once_more() {
+        queenAnswers();
+        var first = true;
+        var all = answers;
+        answers = [];
+        transportOverride = function(url, done) {
+            if (first && url.indexOf("wbsearchentities") > 0) {
+                first = false;
+                asked = asked.concat([url]);
+                return done(503, null);
+            }
+            answers = all;
+            fake(url, done);
+        };
+        var r = find("Queen");
+        transportOverride = null;
+        compare(r.failed, false);
+        compare(r.info.name, "Queen");
+        compare(asked.length, 6);
     }
 
     // Wikipedia down: what Wikidata and Deezer had is shown, but asked again.
@@ -171,7 +194,7 @@ TestCase {
         compare(r.info.fans, 12345678);
         compare(r.info.sources, ["Deezer"]);
         find("Queen");
-        compare(asked.length, 10);
+        compare(asked.length, 12);
     }
 
     function test_nobody_wikidata_knows_maybe_deezer_does() {
@@ -196,7 +219,7 @@ TestCase {
         compare(r.info, null);
         compare(r.failed, true);
         find("Obscure Act");
-        compare(asked.length, 4);
+        compare(asked.length, 6);
     }
 
     function test_off_asks_nothing() {

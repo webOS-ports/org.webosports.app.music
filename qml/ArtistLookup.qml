@@ -30,13 +30,27 @@ QtObject {
 
     // The preference: off, nothing is looked up.
     property bool enabled: true
-    // The language of the Wikipedia to read, where it has the artist.
-    property string language: Qt.locale().name.split("_")[0] || "en"
+    // The language of the Wikipedia to read, where it has the artist ("C"
+    // and the like, no language: English).
+    property string language: {
+        var l = Qt.locale().name.split("_")[0];
+        return /^[a-z]{2,3}$/.test(l) ? l : "en";
+    }
     property string wikidataUrl: "https://www.wikidata.org/w/api.php"
     property string deezerUrl: "https://api.deezer.com"
     // function(url, done(httpStatus, jsonOrNull)): the HTTP call, replaceable
     // by the tests.
     property var transport: _xhr
+    // Wikimedia answers 503 now and then: a request that failed so (or did
+    // not get through at all) is sent once more before it counts as failed.
+    function _get(url, done) {
+        transport(url, function(status, data) {
+            if (status === 0 || status >= 500)
+                transport(url, done);
+            else
+                done(status, data);
+        });
+    }
 
     // What was found (or that nothing was) per artist, so the next song by
     // them does not ask again; a failed request is not kept.
@@ -86,7 +100,7 @@ QtObject {
     }
 
     function _wikidataSearch(name, done) {
-        transport(wikidataUrl + "?action=wbsearchentities&format=json&type=item&limit=10&language=en&uselang=en&search="
+        _get(wikidataUrl + "?action=wbsearchentities&format=json&type=item&limit=10&language=en&uselang=en&search="
                   + encodeURIComponent(name), function(status, data) {
             if (status !== 200 || !data)
                 done("", true);
@@ -100,7 +114,7 @@ QtObject {
     function _about(name, id, done) {
         var lang = language;
         var langs = lang === "en" ? "en" : lang + "|en";
-        transport(wikidataUrl + "?action=wbgetentities&format=json&props=claims|sitelinks|descriptions&ids=" + id
+        _get(wikidataUrl + "?action=wbgetentities&format=json&props=claims|sitelinks|descriptions&ids=" + id
                   + "&languages=" + langs + "&sitefilter=" + (lang === "en" ? "enwiki" : lang + "wiki|enwiki"),
                   function(status, data) {
             var entity = status === 200 && data && data.entities ? data.entities[id] : null;
@@ -119,7 +133,7 @@ QtObject {
             if (ids.length === 0) {
                 joined();
             } else {
-                lookup.transport(lookup.wikidataUrl + "?action=wbgetentities&format=json&props=labels&ids=" + ids.join("|")
+                lookup._get(lookup.wikidataUrl + "?action=wbgetentities&format=json&props=labels&ids=" + ids.join("|")
                                  + "&languages=" + langs, function(status, data) {
                     if (status === 200 && data)
                         ids.forEach(function(x) { labels[x] = ArtistInfo.label(data, x, lang); });
@@ -131,7 +145,7 @@ QtObject {
             if (f.wikiTitle === "") {
                 joined();
             } else {
-                lookup.transport("https://" + f.wikiLang + ".wikipedia.org/api/rest_v1/page/summary/"
+                lookup._get("https://" + f.wikiLang + ".wikipedia.org/api/rest_v1/page/summary/"
                                  + encodeURIComponent(f.wikiTitle.replace(/ /g, "_")), function(status, data) {
                     if (status === 200 && data)
                         wiki = data;
@@ -146,7 +160,7 @@ QtObject {
                 joined();
             };
             if (f.deezerId !== "") {
-                lookup.transport(lookup.deezerUrl + "/artist/" + encodeURIComponent(f.deezerId), function(status, data) {
+                lookup._get(lookup.deezerUrl + "/artist/" + encodeURIComponent(f.deezerId), function(status, data) {
                     if (status === 200)
                         deezerDone(ArtistInfo.deezerArtist(data), false);
                     else
@@ -159,7 +173,7 @@ QtObject {
     }
 
     function _deezerByName(name, done) {
-        transport(deezerUrl + "/search/artist?limit=5&q=" + encodeURIComponent(name), function(status, data) {
+        _get(deezerUrl + "/search/artist?limit=5&q=" + encodeURIComponent(name), function(status, data) {
             if (status === 200)
                 done(ArtistInfo.pickDeezer(data, name), false);
             else

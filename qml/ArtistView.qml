@@ -38,6 +38,7 @@ Item {
     property bool inLibrary: false
 
     signal libraryRequested()
+    signal retryRequested()
 
     Flickable {
         id: flick
@@ -54,14 +55,21 @@ Item {
             width: flick.width
             spacing: Units.gu(1.2)
 
-            // The photo, their name on it; without one, just the name.
+            // The photo, their name on it; without one (or until it is
+            // there), just the name.
             Item {
+                id: header
+                objectName: "artistHeader"
+                // Not photo.visible: inside the frame hidden without it, the
+                // photo would never be visible.
+                readonly property bool hasPhoto: photo.status === Image.Ready
                 width: parent.width
-                height: photo.visible ? Math.min(width * 0.62, Units.gu(36)) : nameBlock.implicitHeight + Units.gu(1)
+                height: hasPhoto ? Math.max(Math.min(width * 0.62, Units.gu(36)), nameBlock.implicitHeight + Units.gu(3))
+                                 : nameBlock.implicitHeight + Units.gu(3)
 
                 Rectangle {
                     anchors.fill: parent
-                    visible: photo.visible
+                    visible: header.hasPhoto
                     radius: Units.gu(1)
                     color: view.theme.darkRaised
                     clip: true
@@ -69,7 +77,6 @@ Item {
                         id: photo
                         objectName: "artistPhoto"
                         anchors.fill: parent
-                        visible: source != "" && status !== Image.Error
                         source: view.info ? view.info.image : ""
                         sourceSize.width: Math.ceil(width)
                         fillMode: Image.PreserveAspectCrop
@@ -223,10 +230,16 @@ Item {
         wrapMode: Text.WordWrap
         text: view.artist === "" ? "No artist for this song."
             : view.status === "searching" ? "Looking up " + view.artist + "…"
-            : view.status === "failed" ? "Could not reach Wikipedia or Deezer.\nTry again when online."
+            : view.status === "failed" ? "Could not reach Wikipedia or Deezer.\nTap to try again."
             : view.status === "off" ? "Looking up artists online is off in Preferences."
             : "Nothing found about " + view.artist + "."
         color: view.theme.darkSecondaryText
         font.pixelSize: view.theme.fontSmall
+        MouseArea {
+            anchors.fill: parent
+            anchors.margins: -Units.gu(2)
+            enabled: view.status === "failed" && view.info === null
+            onClicked: view.retryRequested()
+        }
     }
 }
