@@ -217,6 +217,33 @@ TestCase {
         verify(!Library.isLongForm(null));
     }
 
+    // Streamed covers shown large are asked for large, as each service names
+    // its sizes (the URLs are the services' own); small ones stay thumbnails.
+    function test_art_sized() {
+        compare(Art.sized("https://i.scdn.co/image/ab67616d000048513cc08d0d2f337c9992c21d9c", 900),
+                "https://i.scdn.co/image/ab67616d0000b2733cc08d0d2f337c9992c21d9c");
+        compare(Art.sized("https://i.scdn.co/image/ab67616d00001e023cc08d0d2f337c9992c21d9c", 500),
+                "https://i.scdn.co/image/ab67616d0000b2733cc08d0d2f337c9992c21d9c");
+        compare(Art.sized("https://resources.tidal.com/images/cfc4e446/7acf/42ef/baeb/c70bfcf51e15/320x320.jpg", 900),
+                "https://resources.tidal.com/images/cfc4e446/7acf/42ef/baeb/c70bfcf51e15/1280x1280.jpg");
+        compare(Art.sized("https://resources.tidal.com/images/cfc4e446/7acf/42ef/baeb/c70bfcf51e15/320x320.jpg", 500),
+                "https://resources.tidal.com/images/cfc4e446/7acf/42ef/baeb/c70bfcf51e15/640x640.jpg");
+        compare(Art.sized("https://cdn-images.dzcdn.net/images/cover/39e2d76c431f5d4ec6373f793dc144e5/250x250-000000-80-0-0.jpg", 900),
+                "https://cdn-images.dzcdn.net/images/cover/39e2d76c431f5d4ec6373f793dc144e5/1000x1000-000000-80-0-0.jpg");
+        compare(Art.sized("https://static.qobuz.com/images/covers/15/82/0603497948215_230.jpg", 900),
+                "https://static.qobuz.com/images/covers/15/82/0603497948215_600.jpg");
+        compare(Art.sized("https://i1.sndcdn.com/artworks-Ivx5qvYUBfhm-0-large.jpg", 900),
+                "https://i1.sndcdn.com/artworks-Ivx5qvYUBfhm-0-t500x500.jpg");
+        // YouTube's large sizes are not there for every video; others unknown.
+        var yt = "https://i.ytimg.com/vi/fd0uuy4mDrE/hqdefault.jpg?sqp=x";
+        compare(Art.sized(yt, 900), yt);
+        compare(Art.sized("https://archive.org/services/img/x", 900), "https://archive.org/services/img/x");
+        // A row's cover: the thumbnail.
+        compare(Art.sized("https://i1.sndcdn.com/artworks-Ivx5qvYUBfhm-0-large.jpg", 120),
+                "https://i1.sndcdn.com/artworks-Ivx5qvYUBfhm-0-large.jpg");
+        compare(Art.sized("", 900), "");
+    }
+
     function test_art_source() {
         compare(Art.source("", "x"), "");
         compare(Art.source("/m/a b#1.mp3", "AC/DC"), "image://musicart/AC%2FDC/%2Fm%2Fa%20b%231.mp3");
