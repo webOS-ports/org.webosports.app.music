@@ -36,9 +36,16 @@ TestCase {
         done(a ? a[0] : 404, a ? a[1] : null);
     }
 
+    property var waited: []
+    function noWait(ms, fn) {
+        waited = waited.concat([ms]);
+        fn();
+    }
+
     LyricsLookup {
         id: lookup
         transport: fakeLrclib
+        delay: noWait
     }
 
     readonly property string base: "https://lrclib.net/api/search?"
@@ -46,9 +53,13 @@ TestCase {
         return artist === undefined ? base + "q=" + encodeURIComponent(title)
             : base + "track_name=" + encodeURIComponent(title) + "&artist_name=" + encodeURIComponent(artist);
     }
+    property bool lastFailed: false
     function find(track) {
         var got = undefined;
-        lookup.find(track, function(r) { got = r; });
+        lookup.find(track, function(r, failed) {
+            got = r;
+            lastFailed = failed === true;
+        });
         verify(got !== undefined, "answered at once by the fake");
         return got;
     }
@@ -56,6 +67,7 @@ TestCase {
     function init() {
         asked = [];
         answers = {};
+        waited = [];
         lookup.enabled = true;
         lookup._found = {};
         lookup._kept = 0;
@@ -95,12 +107,51 @@ TestCase {
         compare(find(track), null);
         compare(find(track), null);
         compare(asked.length, 1);
+        verify(!lastFailed, "nothing there is not a failure");
         // Offline: not kept, asked again the next time.
         var other = { path: "/m/y.mp3", title: "Offline", artist: "Nobody", album: "A", duration: 100000 };
         answers[q("Offline", "Nobody")] = [0, null];
         compare(find(other), null);
+        verify(lastFailed, "offline is a failure");
         compare(find(other), null);
+        compare(asked.length, 1 + 2 * 3);
+    }
+
+    // LRCLIB when it is busy, as seen from the MindPhone (2026-10-29): 503
+    // {"name":"ServerOverloaded"} for one request, 200 for the next.
+    function test_a_busy_server_is_asked_again_after_a_pause() {
+        var tries = 0;
+        answers[q("Wonderful World", "Art Garfunkel")] = function() {
+            return ++tries < 3 ? [503, { name: "ServerOverloaded", statusCode: 503 }]
+                               : [200, [{ duration: 209, plainLyrics: "What a wonderful world" }]];
+        };
+        var r = find({ path: "spotify:track:1", title: "Wonderful World", artist: "Art Garfunkel",
+                       album: "A", duration: 209000, remote: true });
+        compare(r, { text: "What a wonderful world", instrumental: false });
+        verify(!lastFailed);
         compare(asked.length, 3);
+        compare(waited, [1000, 3000]);
+    }
+
+    function test_a_server_busy_throughout_is_a_failure_not_kept() {
+        var track = { path: "spotify:track:2", title: "Busy", artist: "Nobody", album: "A", duration: 1000, remote: true };
+        answers[q("Busy", "Nobody")] = [503, null];
+        compare(find(track), null);
+        verify(lastFailed, "told apart from nothing found");
+        compare(asked.length, 3);
+        // Once it answers, the same song is found: the failure was not kept.
+        answers[q("Busy", "Nobody")] = [200, [{ duration: 1, plainLyrics: "Now" }]];
+        compare(find(track).text, "Now");
+        verify(!lastFailed);
+    }
+
+    function test_a_refusal_is_not_asked_again() {
+        var track = { path: "/m/r.mp3", title: "Refused", artist: "Nobody", album: "A", duration: 1000 };
+        answers[q("Refused", "Nobody")] = [429, null];
+        compare(find(track), null);
+        verify(lastFailed);
+        compare(asked.length, 1);
+        compare(waited, []);
     }
 
     function test_off_asks_nothing() {

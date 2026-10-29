@@ -43,7 +43,7 @@ Rectangle {
     property string lyricsText: ""
     // Where they came from: "" the song itself (tags, .lrc), "LRCLIB" looked up.
     property string lyricsSource: ""
-    // "searching", "found", "instrumental" or "none".
+    // "searching", "found", "instrumental", "none" or "failed".
     property string lyricsStatus: "none"
     // About the artist in the cover's place (ArtistView), instead of lyrics.
     property bool showArtist: false
@@ -118,12 +118,12 @@ Rectangle {
         if (own !== "" || !t || !appWindow.lyricsLookup.enabled)
             return;
         lyricsStatus = "searching";
-        appWindow.lyricsLookup.find(t, function(result) {
+        appWindow.lyricsLookup.find(t, function(result, failed) {
             // Another song by the time the answer came.
             if (!np.track || np.track.path !== t.path)
                 return;
             if (!result) {
-                np.lyricsStatus = "none";
+                np.lyricsStatus = failed ? "failed" : "none";
                 return;
             }
             np.lyricsText = result.text;
@@ -317,6 +317,7 @@ Rectangle {
             ownOnly: !(np.track && np.track.remote) && !appWindow.lyricsLookup.enabled
             position: np.player ? np.player.position : 0
             onSeekRequested: function(ms) { np.player.seek(ms); }
+            onRetryRequested: np.loadLyrics()
         }
 
         ArtistView {
