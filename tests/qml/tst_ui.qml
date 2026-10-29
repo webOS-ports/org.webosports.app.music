@@ -209,6 +209,36 @@ Item {
             compare(asked.length, 1);
             np.showLyrics = false;
             root.app.prefs.lyricsOnline = true;
+
+            // LRCLIB busy (503) through every try: told apart from no lyrics,
+            // and a tap asks again.
+            var busy = true;
+            asked = [];
+            root.app.lyricsLookup.retryDelays = [10, 10];
+            root.app.lyricsLookup.transport = function(url, done) {
+                asked.push(url);
+                if (busy)
+                    done(503, { name: "ServerOverloaded", statusCode: 503 });
+                else
+                    done(200, [{ duration: 3, plainLyrics: "Busy no more" }]);
+            };
+            root.app.player.playTracks([{ path: "soundcloud:2", title: "Busy Song", artist: "Someone", album: "SoundCloud",
+                                          provider: "soundcloud", remote: true, duration: 3000 }], 0, false);
+            np.showLyrics = true;
+            tryCompare(np, "lyricsStatus", "failed", 3000);
+            compare(asked.length, 3);
+            var status = findByName(np, "lyricsStatus");
+            verify(status.visible);
+            verify(status.text.indexOf("Could not reach LRCLIB") === 0, status.text);
+            wait(300);
+            screenshot("lyrics-lrclib-busy");
+            busy = false;
+            mouseClick(status);
+            tryCompare(np, "lyricsStatus", "found", 3000);
+            verify(np.lyricsText.indexOf("Busy no more") >= 0);
+            np.showLyrics = false;
+            root.app.lyricsLookup.retryDelays = [1000, 3000];
+
             root.app.lyricsLookup.transport = function(url, done) { done(200, []); };
             root.app.player.clearQueue();
             root.app.closeNowPlaying();

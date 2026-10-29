@@ -36,13 +36,22 @@ QtObject {
     // function(providerId) -> the service's name, to tell a streamed track
     // without an artist (js/Streaming.js artistOf).
     property var providerName: Streaming.displayName
+    // function(ms, fn): fn after ms, replaceable by the tests.
+    property var delay: _timer
+    // LRCLIB answers 503 ("ServerOverloaded") for a while when it is busy,
+    // so a request that failed so (or did not get through at all) is sent
+    // again after each of these pauses before it counts as failed; at once
+    // would only be refused again.
+    property var retryDelays: [1000, 3000]
 
     // What was found (or that nothing was) per song, so going back to one
     // does not ask again; a failed request is not kept.
     property var _found: ({})
     property int _kept: 0
 
-    /* done(result): { text, instrumental }, or null when there are none. */
+    /* done(result, failed): { text, instrumental }, or null when there are
+     * none; failed when LRCLIB could not be reached (it is asked again the
+     * next time). */
     function find(track, done) {
         if (!enabled || !track || !track.title) {
             done(null);
@@ -65,7 +74,7 @@ QtObject {
                 done(null);
                 return;
             }
-            lookup.transport(lookup._searchUrl(artist, titles[i]), function(status, data) {
+            lookup._get(lookup._searchUrl(artist, titles[i]), function(status, data) {
                 var result = status === 200 ? Lyrics.pickOnline(data, durationMs) : null;
                 if (result) {
                     lookup._keep(key, result);
@@ -73,11 +82,23 @@ QtObject {
                 } else if (status === 200 || status === 404) {
                     tryTitle(i + 1);
                 } else {
-                    done(null); // offline, or refused: asked again next time
+                    done(null, true); // offline, or refused: asked again next time
                 }
             });
         };
         tryTitle(0);
+    }
+
+    function _get(url, done) {
+        var attempt = function(n) {
+            lookup.transport(url, function(status, data) {
+                if ((status === 0 || status >= 500) && n < lookup.retryDelays.length)
+                    lookup.delay(lookup.retryDelays[n], function() { attempt(n + 1); });
+                else
+                    done(status, data);
+            });
+        };
+        attempt(0);
     }
 
     function _searchUrl(artist, title) {
@@ -100,6 +121,16 @@ QtObject {
         }
         _found[key] = result;
         _kept++;
+    }
+
+    function _timer(ms, fn) {
+        var t = Qt.createQmlObject("import QtQuick; Timer {}", lookup);
+        t.interval = ms;
+        t.triggered.connect(function() {
+            t.destroy();
+            fn();
+        });
+        t.start();
     }
 
     function _xhr(url, done) {

@@ -34,12 +34,13 @@ Item {
     // Who to credit: "" for the song's own lyrics, else the name of where
     // they were looked up.
     property string source: ""
-    // "searching", "found", "instrumental" or "none" (NowPlaying).
+    // "searching", "found", "instrumental", "none" or "failed" (NowPlaying).
     property string status: "none"
     // Only the song's own lyrics are looked for (no lookup online, a file).
     property bool ownOnly: false
 
     signal seekRequested(real ms)
+    signal retryRequested()
 
     readonly property var parsed: Lyrics.parse(text)
     readonly property int currentLine: parsed.synced ? Lyrics.lineAt(parsed.lines, position + 300) : -1
@@ -97,6 +98,7 @@ Item {
     }
 
     Text {
+        objectName: "lyricsStatus"
         anchors.centerIn: parent
         width: parent.width - Units.gu(4)
         visible: view.parsed.lines.length === 0
@@ -104,10 +106,17 @@ Item {
         wrapMode: Text.WordWrap
         text: view.status === "searching" ? "Looking for lyrics…"
             : view.status === "instrumental" ? "Instrumental"
+            : view.status === "failed" ? "Could not reach LRCLIB.\nTap to try again."
             : view.ownOnly ? "No lyrics for this song.\nPut them in its tags, or in a .lrc file of the same name beside it."
             : "No lyrics found for this song."
         color: view.theme.darkSecondaryText
         font.pixelSize: view.theme.fontSmall
+        MouseArea {
+            anchors.fill: parent
+            anchors.margins: -Units.gu(2)
+            enabled: view.status === "failed" && view.parsed.lines.length === 0
+            onClicked: view.retryRequested()
+        }
     }
 
     Text {
