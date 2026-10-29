@@ -67,7 +67,22 @@ QtObject {
         ["artists", function() { app.pageStack.get(0).category = "artists"; }],
         ["songs", function() { app.pageStack.get(0).category = "songs"; }],
         ["playlists", function() { app.pageStack.get(0).category = "playlists"; }],
-        ["folders", function() { app.pageStack.get(0).category = "folders"; }],
+        // The playlist dialogs, over the playlists
+        ["playlist-new", function() { app.newPlaylist([]); }],
+        ["playlist-rename", function() {
+            dialogOf("promptRejectButton").reject();
+            app.playlists.create("Road Mix", [], function(p) {
+                run.playlistId = p._id;
+                app.playlistMenu(p._id);
+                chooseInSheet("Rename…");
+            });
+        }],
+        ["playlist-delete", function() {
+            dialogOf("promptRejectButton").reject();
+            app.playlistMenu(run.playlistId);
+            chooseInSheet("Delete");
+        }],
+        ["folders", function() { dialogOf("confirmRejectButton").rejected(); app.pageStack.get(0).category = "folders"; }],
         ["view-menu", function() {
             app.pageStack.get(0).category = "albums";
             if (app.compact)
@@ -88,6 +103,34 @@ QtObject {
         ["preferences", function() { app.openPreferences(); }],
         ["exhibition", function() { app.pageStack.pop(null); app.exhibitionWanted = true; }]
     ]
+
+    property string playlistId: ""
+
+    function findNamed(name) {
+        var items = [app.contentItem];
+        while (items.length) {
+            var it = items.shift();
+            if (it.objectName === name)
+                return it;
+            for (var i = 0; i < it.children.length; i++)
+                items.push(it.children[i]);
+        }
+        return null;
+    }
+
+    // The dialog (luneos-components' PromptDialog or ConfirmDialog) a
+    // button is in
+    function dialogOf(button) {
+        var it = findNamed(button);
+        while (it && it.acceptText === undefined)
+            it = it.parent;
+        return it;
+    }
+
+    function chooseInSheet(label) {
+        var labels = app.sheet.choices.map(function(c) { return c.label; });
+        app.sheet.choose(labels.indexOf(label));
+    }
 
     function nowPlaying() {
         var items = [app.contentItem];

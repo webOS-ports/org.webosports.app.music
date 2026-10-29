@@ -768,6 +768,83 @@ Item {
             root.app.pageStack.get(0).category = "albums";
         }
 
+        // The dialog a button of luneos-components' PromptDialog or
+        // ConfirmDialog is in, and that button tapped.
+        function dialogOf(button) {
+            var it = findByName(root.app.contentItem, button);
+            while (it && it.acceptText === undefined)
+                it = it.parent;
+            return it;
+        }
+        function tapButton(name) {
+            var b = findByName(root.app.contentItem, name);
+            verify(b && b.visible, name + " shown");
+            mouseClick(b);
+            wait(20);
+        }
+        function chooseInSheet(label) {
+            var labels = root.app.sheet.choices.map(function(c) { return c.label; });
+            var i = labels.indexOf(label);
+            verify(i >= 0, "no choice " + label + " in " + JSON.stringify(labels));
+            root.app.sheet.choose(i);
+        }
+
+        // Rename, Delete and New Playlist, through their dialogs.
+        function test_07_playlist_dialogs() {
+            var created = null;
+            var paths = root.app.library.lib.songs.slice(0, 2).map(function(s) { return s.path; });
+            root.app.playlists.create("Road Mix", paths, function(p) { created = p; });
+            tryVerify(function() { return created !== null; });
+            var id = created._id;
+            var prompt = dialogOf("promptAcceptButton");
+            var confirm = dialogOf("confirmAcceptButton");
+            verify(prompt && confirm);
+
+            root.app.newPlaylist([]);
+            verify(prompt.opened);
+            compare(prompt.title, "New Playlist");
+            compare(prompt.text, "Playlist");
+            screenshot("playlist-new");
+            tapButton("promptRejectButton");
+            verify(!prompt.opened);
+
+            root.app.playlistMenu(id);
+            chooseInSheet("Rename…");
+            verify(prompt.opened);
+            compare(prompt.title, "Rename Playlist");
+            compare(prompt.text, "Road Mix");
+            screenshot("playlist-rename");
+            prompt.text = "Night Mix";
+            tapButton("promptAcceptButton");
+            verify(!prompt.opened);
+            compare(root.app.playlists.byId(id).name, "Night Mix");
+
+            // Cancelled: nothing renamed.
+            root.app.playlistMenu(id);
+            chooseInSheet("Rename…");
+            prompt.text = "Other";
+            tapButton("promptRejectButton");
+            verify(!prompt.opened);
+            compare(root.app.playlists.byId(id).name, "Night Mix");
+
+            root.app.playlistMenu(id);
+            chooseInSheet("Delete");
+            verify(confirm.opened);
+            compare(confirm.title, "Delete “Night Mix”?");
+            compare(confirm.message, "The songs stay in your library.");
+            compare(confirm.acceptText, "Delete");
+            verify(confirm.destructive);
+            screenshot("playlist-delete");
+            tapButton("confirmRejectButton");
+            verify(!confirm.opened);
+            verify(root.app.playlists.byId(id), "kept when cancelled");
+            root.app.playlistMenu(id);
+            chooseInSheet("Delete");
+            tapButton("confirmAcceptButton");
+            verify(!confirm.opened);
+            tryVerify(function() { return !root.app.playlists.byId(id); });
+        }
+
         function test_08_playlist_files() {
             root.app.openPlaylistFile(root.fixtures + "/mix.m3u");
             settle();
