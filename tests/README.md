@@ -5,10 +5,11 @@
     tests/run-qml-tests.sh <host build dir> [luneos-components]
 
 The host build is this project built for the host (`cmake -S . -B <dir>
--DBUILD_TESTING=ON`, TagLib from a sysroot works: see below); its plugin is
-the real one. luneos-components needs its desktop build, ActionSheet and
-FastScroller, and the desktop stand-in Db8Model with status, the error
-properties and the writing calls.
+-DBUILD_TESTING=ON`, TagLib from a sysroot works: see below); its plugin
+is the real one. luneos-components needs its desktop build, ActionSheet
+and FastScroller, ConfirmDialog and PromptDialog with ask(), and the
+desktop stand-in Db8Model with status, the error properties and the
+writing calls.
 
 - `tst_queue.qml`: `qml/js/Queue.js` - order, shuffle and unshuffle (with
   changes made meanwhile), repeat, play next, move, remove, save/restore.
@@ -20,7 +21,8 @@ properties and the writing calls.
   have stored it: library, covers (embedded, folder.jpg above a disc folder,
   none), every category, album page and playback, Now Playing (ReplayGain in
   every mode, lyrics, shuffle/repeat, favourite, cover tap regions), menus,
-  queue, playlists, playlist files, search, folders, opening a file, launch
+  queue, playlists (Rename, Delete and New Playlist through their
+  dialogs' buttons), playlist files, search, folders, opening a file, launch
   actions and exhibition, preferences, song info, play counts, sleep timer
   and speed, the saved queue, and screenshots of every screen at 480x800,
   320x480, 720x720, 1024x768 and 768x1024 in `build/test-output/test-screens`.
@@ -98,6 +100,10 @@ regions, album gain, saving the queue, merging the tag data. Two
 mutations survived as equivalent: splitting the provider id at the last
 "/" (both parts are percent-encoded, so there is only one) and dropping the
 BOM strip (QString::fromUtf8 does it; the code was removed).
+
+Mutation-checked, 2026-10-29, the playlist dialogs: refusing an empty
+name, renaming, deleting, the red Delete, its message, and a fresh text
+in each prompt (the old prompt opened with the text of the one before).
 
 ## Sanitizers and valgrind
 

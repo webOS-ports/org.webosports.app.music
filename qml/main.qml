@@ -659,18 +659,13 @@ WebOSWindow {
         anchors.fill: parent
     }
 
+    // A playlist's name, and the question before deleting one: asked
+    // with ask(), which runs the answer.
     LC.PromptDialog {
         id: prompt
         anchors.fill: parent
         visible: false
         z: 1001
-        property var onDone: null
-        onAccepted: function(text) {
-            close();
-            if (onDone)
-                onDone(text);
-        }
-        onRejected: close()
     }
 
     LC.ConfirmDialog {
@@ -678,13 +673,6 @@ WebOSWindow {
         anchors.fill: parent
         visible: false
         z: 1001
-        property var onDone: null
-        onAccepted: {
-            close();
-            if (onDone)
-                onDone();
-        }
-        onRejected: close()
     }
 
 
@@ -1094,10 +1082,10 @@ WebOSWindow {
         var tracks = library.tracksFor(p.tracks);
         var choices = _enqueueChoices(tracks).slice(0, 4);
         choices.push({ label: "Rename…", action: function() {
-            prompt.title = "Rename Playlist";
-            prompt.defaultValue = p.name;
-            prompt.onDone = function(text) { playlists.rename(id, text); };
-            prompt.open();
+            prompt.ask({ title: "Rename Playlist", text: p.name,
+                         // An empty name is not taken.
+                         valid: function(text) { return text.trim() !== ""; },
+                         onAccepted: function(text) { playlists.rename(id, text); } });
         } });
         choices.push({ label: "Export to " + Library.fileName(playlistDir), action: function() {
             // Streamed tracks mean nothing to another player: files only.
@@ -1105,29 +1093,25 @@ WebOSWindow {
             appWindow.notify(file !== "" ? "Saved as " + file : "The playlist could not be saved.");
         } });
         choices.push({ label: "Delete", destructive: true, action: function() {
-            confirm.title = "Delete “" + p.name + "”?";
-            confirm.message = "The songs stay in your library.";
-            confirm.acceptText = "Delete";
-            confirm.destructive = true;
-            confirm.onDone = function() {
-                if (stack.currentItem && stack.currentItem.playlistId === id)
-                    stack.pop();
-                playlists.remove(id);
-            };
-            confirm.open();
+            confirm.ask({ title: "Delete “" + p.name + "”?", message: "The songs stay in your library.",
+                          acceptText: "Delete", destructive: true,
+                          onAccepted: function() {
+                              if (stack.currentItem && stack.currentItem.playlistId === id)
+                                  stack.pop();
+                              playlists.remove(id);
+                          } });
         } });
         sheet.show(p.name, choices, Library.plural(p.tracks.length, "song", "songs"));
     }
 
     function newPlaylist(paths) {
-        prompt.title = "New Playlist";
-        prompt.defaultValue = playlists.uniqueName("Playlist");
-        prompt.onDone = function(text) {
-            playlists.create(text, paths, function(p) {
-                appWindow.notify(paths.length > 0 ? "Saved “" + p.name + "”." : "Made “" + p.name + "”.");
-            });
-        };
-        prompt.open();
+        // An empty name is taken as "Playlist" (PlaylistStore.uniqueName).
+        prompt.ask({ title: "New Playlist", text: playlists.uniqueName("Playlist"),
+                     onAccepted: function(text) {
+                         playlists.create(text, paths, function(p) {
+                             appWindow.notify(paths.length > 0 ? "Saved “" + p.name + "”." : "Made “" + p.name + "”.");
+                         });
+                     } });
     }
 
     function addToPlaylist(paths) {
