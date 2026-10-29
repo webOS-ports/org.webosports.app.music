@@ -814,6 +814,11 @@ Item {
             compare(prompt.title, "Rename Playlist");
             compare(prompt.text, "Road Mix");
             screenshot("playlist-rename");
+            // An empty name is not taken: the dialog stays.
+            prompt.text = "   ";
+            tapButton("promptAcceptButton");
+            verify(prompt.opened, "an empty name is not taken");
+            compare(root.app.playlists.byId(id).name, "Road Mix");
             prompt.text = "Night Mix";
             tapButton("promptAcceptButton");
             verify(!prompt.opened);
@@ -826,6 +831,10 @@ Item {
             tapButton("promptRejectButton");
             verify(!prompt.opened);
             compare(root.app.playlists.byId(id).name, "Night Mix");
+            // The next question starts afresh, not with what was typed.
+            root.app.newPlaylist([]);
+            compare(prompt.text, "Playlist");
+            tapButton("promptRejectButton");
 
             root.app.playlistMenu(id);
             chooseInSheet("Delete");
