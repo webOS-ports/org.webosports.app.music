@@ -40,7 +40,10 @@ writing calls.
   the fixture files), skipping one that does not resolve, and handing
   Spotify to SpotifyEngine and back, and SpotifyEngine's Connect calls and
   end-of-track guess (stopped near the end is an end, paused mid-track is
-  not).
+  not), and how far it trusts the daemon's lagging play state: a reply to a
+  poll sent before the last command is dropped, and a different play state
+  needs two reports in a row - so a stray report neither undoes a pause nor
+  activates the media session again.
 - `tst_ui.qml` `test_18_streaming`: the Streaming category, a service's
   search, playing a result, its menu, a playlist with a streamed track, and
   the per-service section in Search.

@@ -27,6 +27,15 @@ import QtMultimedia
  * behind) but never that a track ended: the end is a track that was near
  * its end and stops, or is replaced by another. Between polls the position
  * runs on from the last report.
+ *
+ * Its report is Spotify's Web API, not librespot itself, and it lags: right
+ * after a pause it can still say playing, and now and then it says paused
+ * for one poll in the middle of a track. Taken as it came, the play state
+ * bounced back for a second after a pause, and every bounce told the media
+ * session playing had started again - which took the headset's keys from
+ * whatever else was playing. So a report sent before the last command is
+ * dropped, and a play state other than ours is only taken once
+ * confirmPolls reports in a row agree on it.
  */
 Item {
     id: engine
@@ -41,6 +50,8 @@ Item {
     property real masterFactor: 1
     // Spotify Connect has no speed.
     property real rate: 1
+    // reports in a row that must agree before a different play state is taken
+    property int confirmPolls: 2
 
     readonly property int playbackState: _playing ? MediaPlayer.PlayingState
                                                   : (_loaded ? MediaPlayer.PausedState : MediaPlayer.StoppedState)
@@ -64,6 +75,14 @@ Item {
     property real _reported: 0
     property bool _ended: false
     property string _error: ""
+    property int _commands: 0          // bumped by every command sent
+    property int _disagreed: 0         // reports in a row against _playing
+
+    // Every command makes the reports asked for before it stale.
+    function _command() {
+        _commands++;
+        _disagreed = 0;
+    }
 
     function _call(method, endpoint, body, done) {
         if (!transport)
@@ -77,6 +96,7 @@ Item {
     function load(p) {
         if (p === _path)
             return;
+        _command();
         _path = p || "";
         _loaded = false;
         _playing = false;
@@ -96,6 +116,7 @@ Item {
     function play() {
         if (_path === "")
             return;
+        _command();
         if (!_loaded) {
             _call("POST", "/player/load", { uri: _path, position_ms: Math.round(_startAt) }, function(code, data) {
                 if (code !== 200) {
@@ -120,6 +141,7 @@ Item {
     }
 
     function pause() {
+        _command();
         if (_loaded)
             _call("POST", "/player/pause", null, null);
         _playing = false;
@@ -136,6 +158,7 @@ Item {
             _position = to;
             return;
         }
+        _command();
         _call("POST", "/player/seek", { position_ms: Math.round(to) }, null);
         _position = to;
         _reported = to;
@@ -169,8 +192,9 @@ Item {
         }
     }
 
-    function _onStatus(code, s) {
-        if (code !== 200 || !s || !_loaded)
+    // A report on the poll sent when _commands was `asked`.
+    function _onStatus(code, s, asked) {
+        if (code !== 200 || !s || !_loaded || asked !== _commands)
             return;
         var nearEnd = _duration > 0 && _position >= _duration - 3000;
         var ours = !s.uri || s.uri === _path;
@@ -185,16 +209,25 @@ Item {
         }
         if (!ours)
             return;
-        _playing = !!s.is_playing;
+        var playing = !!s.is_playing;
+        if (playing !== _playing && ++_disagreed < confirmPolls)
+            return;
+        _disagreed = 0;
+        _playing = playing;
         _reported = s.position_ms || 0;
         _reportedAt = Date.now();
         _position = _reported;
+    }
+
+    function _poll() {
+        var asked = _commands;
+        _call("GET", "/player/status", null, function(code, s) { engine._onStatus(code, s, asked); });
     }
 
     Timer {
         interval: 1000
         repeat: true
         running: engine._loaded
-        onTriggered: engine._call("GET", "/player/status", null, engine._onStatus)
+        onTriggered: engine._poll()
     }
 }
