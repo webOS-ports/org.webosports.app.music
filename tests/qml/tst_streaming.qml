@@ -25,7 +25,8 @@ import "../../qml/js/Queue.js" as Queue
  * Streaming: the track objects and paths (js/Streaming.js), StreamingStore
  * against a fake music streaming service, Player resolving streamed tracks
  * (to the fixture files, standing in for the web), and SpotifyEngine's
- * Connect control and its guess at the end of a track.
+ * Connect control, its guess at the end of a track, and how far it trusts
+ * the daemon's lagging play state - also as the media session sees it.
  */
 Item {
     id: root
@@ -37,10 +38,18 @@ Item {
     // The fake daemon: answers by method and path, and records the calls.
     property var calls: []
     property var answers: ({})
+    // While set, a status poll is not answered but kept here, to be answered
+    // later with held(code, json): a reply still on its way.
+    property bool holdStatus: false
+    property var held: null
     function fakeTransport(method, url, body, done) {
         var path = url.replace(/^http:\/\/127\.0\.0\.1:8730/, "");
         root.calls = root.calls.concat([{ method: method, path: path, body: body }]);
         var key = method + " " + path.replace(/\?.*$/, "");
+        if (holdStatus && key === "GET /player/status") {
+            root.held = done;
+            return;
+        }
         var a = root.answers[key];
         if (typeof a === "function")
             a = a(body, path);
@@ -64,6 +73,33 @@ Item {
     SpotifyEngine {
         id: spotify
         transport: root.fakeTransport
+    }
+
+    // A media session on the Spotify engine, against a fake
+    // com.webos.service.mediacontroller that records what it is told.
+    property var sessionCalls: []
+    QtObject {
+        id: fakeBus
+        function subscribe(uri, args, onReply, onError) {
+            onReply({ payload: JSON.stringify({ returnValue: true, subscribed: true }) });
+            return { cancel: function() {} };
+        }
+        function call(uri, args, onReply, onError) {
+            root.sessionCalls = root.sessionCalls.concat([uri.replace(/^.*\//, "")]);
+            onReply({ payload: "{\"returnValue\":true}" });
+        }
+    }
+    QtObject {
+        id: spotifyPlayer
+        readonly property bool playing: spotify.isPlaying
+        readonly property var current: ({ title: "T", path: "spotify:track:x" })
+        readonly property real duration: spotify.duration
+    }
+    MediaSession {
+        id: spotifySession
+        bus: fakeBus
+        appId: "org.webosports.app.music"
+        player: spotifyPlayer
     }
 
     SignalSpy {
@@ -496,6 +532,8 @@ Item {
         function init() {
             root.calls = [];
             root.answers = {};
+            root.holdStatus = false;
+            root.held = null;
             endSpy.clear();
             spotify.unload();
         }
@@ -539,6 +577,101 @@ Item {
             root.answers["GET /player/status"] = [200, { is_playing: false, position_ms: 0, uri: "spotify:track:x", duration_ms: 10000 }];
             tryCompare(endSpy, "count", 1, 3000);
             verify(!spotify.isPlaying);
+        }
+
+        // Plays, as the daemon says, with nothing asked of it since.
+        function playing() {
+            root.answers["POST /player/load"] = [200, { ok: true, duration_ms: 200000 }];
+            root.answers["POST /player/pause"] = [200, { ok: true }];
+            root.answers["POST /player/play"] = [200, { ok: true }];
+            spotify.load("spotify:track:x");
+            spotify.play();
+            verify(spotify.isPlaying);
+        }
+
+        function report(isPlaying, position, asked) {
+            spotify._onStatus(200, { is_playing: isPlaying, position_ms: position, uri: "spotify:track:x",
+                                     duration_ms: 200000 }, asked === undefined ? spotify._commands : asked);
+        }
+
+        // The flicker: paused, and the next report still says playing.
+        function test_a_stale_playing_after_a_pause_is_not_taken() {
+            playing();
+            spotify.pause();
+            report(true, 41000);
+            verify(!spotify.isPlaying, "one late report undid the pause");
+            report(false, 41000);
+            verify(!spotify.isPlaying);
+            // Played from somewhere else after all: two reports say so.
+            report(true, 42000);
+            report(true, 43000);
+            verify(spotify.isPlaying);
+        }
+
+        // A report on a poll sent before the pause is about before the pause.
+        function test_a_report_asked_before_a_command_is_dropped() {
+            playing();
+            var asked = spotify._commands;
+            report(true, 40000, asked);
+            spotify.pause();
+            var at = spotify.position;
+            report(true, 99000, asked);
+            report(true, 99000, asked);
+            verify(!spotify.isPlaying);
+            compare(spotify.position, at);
+        }
+
+        // The poll was on its way when the pause went out; its reply comes
+        // after, and is about before.
+        function test_a_reply_still_on_its_way_at_a_pause_is_dropped() {
+            playing();
+            root.holdStatus = true;
+            spotify._poll();
+            verify(root.held !== null, "the poll was not sent");
+            var early = root.held;
+            spotify.pause();
+            early(200, { is_playing: true, position_ms: 99000, uri: "spotify:track:x", duration_ms: 200000 });
+            spotify._poll();
+            root.held(200, { is_playing: true, position_ms: 99000, uri: "spotify:track:x", duration_ms: 200000 });
+            verify(!spotify.isPlaying, "a reply from before the pause counted towards undoing it");
+        }
+
+        // A command starts the count again: one stray report before it and
+        // one after are not two in a row.
+        function test_a_command_starts_the_count_again() {
+            playing();
+            report(false, 50000);
+            spotify.seek(70000);
+            report(false, 70000);
+            verify(spotify.isPlaying, "reports either side of a seek were counted together");
+        }
+
+        // Now and then the daemon says paused for one poll mid-track.
+        function test_one_paused_report_mid_track_is_not_taken() {
+            playing();
+            report(false, 50000);
+            verify(spotify.isPlaying, "one stray report paused it");
+            report(true, 51000);
+            report(false, 52000);
+            verify(spotify.isPlaying, "the count did not start again");
+            report(false, 53000);
+            verify(!spotify.isPlaying);
+        }
+
+        // What the session saw at 14:30:24: paused, activated, playing, with
+        // nobody touching the player - so the keys went to it.
+        function test_the_session_is_not_activated_again_by_a_stray_report() {
+            playing();
+            tryVerify(function() { return spotifySession.registered; });
+            root.sessionCalls = [];
+            report(false, 60000);
+            report(true, 61000);
+            compare(root.sessionCalls.filter(function(m) { return m === "activateMediaSession"; }).length, 0);
+            compare(root.sessionCalls.filter(function(m) { return m === "setMediaPlayStatus"; }).length, 0);
+            // A real pause and play are told, and the play activates it.
+            spotify.pause();
+            spotify.play();
+            compare(root.sessionCalls.filter(function(m) { return m === "activateMediaSession"; }).length, 1);
         }
 
         function test_pause_mid_track_is_no_end() {
