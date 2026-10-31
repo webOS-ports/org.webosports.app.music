@@ -154,11 +154,11 @@ Item {
             });
             return;
         }
-        _send("/player/play", null);
         _expectNow("play", true, "/player/play", null);
         _playing = true;
         _reportedAt = Date.now();
         _reported = _position;
+        _sendPlay();
     }
 
     function pause() {
@@ -171,11 +171,25 @@ Item {
     }
 
     // A transport command whose reply is only logged when it is not 200.
-    function _send(endpoint, body) {
+    function _send(endpoint, body, refused) {
         _call("POST", endpoint, body, function(code, data) {
-            if (code !== 200)
-                console.warn("Music: Spotify " + endpoint + " answered " + code
-                             + ((data && data.error) ? ": " + data.error : ""));
+            if (code === 200)
+                return;
+            console.warn("Music: Spotify " + endpoint + " answered " + code
+                         + ((data && data.error) ? ": " + data.error : ""));
+            if (refused)
+                refused();
+        });
+    }
+
+    // A refused play starts nothing: no counter, and no report to wait for.
+    function _sendPlay() {
+        const e = _expect;
+        _send("/player/play", null, function() {
+            if (engine._expect !== e)
+                return;
+            engine._expect = null;
+            engine._playing = false;
         });
     }
 
@@ -192,6 +206,10 @@ Item {
         _command();
         e.polls = 0;
         e.resent = true;
+        if (e.what === "play") {
+            _sendPlay();
+            return;
+        }
         if (e.what !== "load") {
             _send(e.endpoint, e.body);
             return;

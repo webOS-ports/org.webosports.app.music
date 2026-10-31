@@ -45,6 +45,9 @@ Item {
     // The same for a load: its reply is kept in heldLoad.
     property bool holdLoad: false
     property var heldLoad: null
+    // The same for a play: its reply is kept in heldPlay.
+    property bool holdPlay: false
+    property var heldPlay: null
     function fakeTransport(method, url, body, done) {
         var path = url.replace(/^http:\/\/127\.0\.0\.1:8730/, "");
         root.calls = root.calls.concat([{ method: method, path: path, body: body }]);
@@ -55,6 +58,10 @@ Item {
         }
         if (holdLoad && key === "POST /player/load") {
             root.heldLoad = done;
+            return;
+        }
+        if (holdPlay && key === "POST /player/play") {
+            root.heldPlay = done;
             return;
         }
         var a = root.answers[key];
@@ -543,6 +550,8 @@ Item {
             root.held = null;
             root.holdLoad = false;
             root.heldLoad = null;
+            root.holdPlay = false;
+            root.heldPlay = null;
             endSpy.clear();
             spotify.unload();
         }
@@ -855,6 +864,153 @@ Item {
             spotify.pause();
             spotify.play();
             compare(root.sessionCalls.filter(function(m) { return m === "activateMediaSession"; }).length, 1);
+        }
+
+        // Paused at 40 s, with the reply to the next play held.
+        function pausedAtForty() {
+            playing();
+            spotify.pause();
+            report(false, 40000);
+            compare(spotify._expect, null);
+            root.holdPlay = true;
+        }
+
+        function answerPlay(code, data) {
+            var done = root.heldPlay;
+            done(code, data);
+        }
+
+        function test_a_refused_play_stops_the_counter_at_once() {
+            playing();
+            spotify.pause();
+            report(false, 40000);
+            root.answers["POST /player/play"] = [503, { error: "rate limited" }];
+            ignoreWarning("Music: Spotify /player/play answered 503: rate limited");
+            var failures = 0;
+            var onFailed = function() { ++failures; };
+            spotify.failed.connect(onFailed);
+            spotify.play();
+            spotify.failed.disconnect(onFailed);
+            verify(!spotify.isPlaying);
+            compare(spotify._expect, null);
+            // The track stays loaded, for the next tap: this is no track error.
+            compare(failures, 0);
+            wait(300);
+            compare(spotify.position, 40000);
+            // Nothing is waited for or asked again: the reports go on as ever.
+            for (var i = 0; i < 2 * spotify.checkPolls + 1; ++i)
+                report(false, 40000);
+            compare(sent("/player/play"), 1);
+            verify(!spotify.isPlaying);
+            compare(endSpy.count, 0);
+        }
+
+        function test_a_play_refused_with_no_reason_stops_too() {
+            playing();
+            spotify.pause();
+            report(false, 40000);
+            root.answers["POST /player/play"] = [0, null];
+            ignoreWarning("Music: Spotify /player/play answered 0");
+            spotify.play();
+            verify(!spotify.isPlaying);
+            compare(spotify._expect, null);
+        }
+
+        function test_a_play_is_on_until_its_refusal_arrives() {
+            pausedAtForty();
+            spotify.play();
+            verify(spotify.isPlaying);
+            verify(root.heldPlay !== null, "the play was not sent");
+            ignoreWarning("Music: Spotify /player/play answered 409: no device");
+            answerPlay(409, { error: "no device" });
+            verify(!spotify.isPlaying);
+            compare(spotify._expect, null);
+        }
+
+        function test_an_accepted_play_still_waits_for_its_report() {
+            pausedAtForty();
+            spotify.play();
+            answerPlay(200, { ok: true });
+            verify(spotify.isPlaying);
+            compare(spotify._expect.what, "play");
+        }
+
+        // A seek changes no state a play refusal is about.
+        function test_a_refusal_counts_after_a_seek() {
+            pausedAtForty();
+            root.answers["POST /player/seek"] = [200, { ok: true }];
+            spotify.play();
+            spotify.seek(50000);
+            ignoreWarning("Music: Spotify /player/play answered 503");
+            answerPlay(503, null);
+            verify(!spotify.isPlaying);
+            compare(spotify._expect, null);
+        }
+
+        function test_a_late_refusal_does_not_undo_a_pause() {
+            pausedAtForty();
+            spotify.play();
+            spotify.pause();
+            var pause = spotify._expect;
+            compare(pause.what, "pause");
+            ignoreWarning("Music: Spotify /player/play answered 503");
+            answerPlay(503, null);
+            verify(spotify._expect === pause, "the refusal took the pause's wait");
+            verify(!spotify.isPlaying);
+        }
+
+        function test_a_late_refusal_does_not_stop_the_next_play() {
+            pausedAtForty();
+            spotify.play();
+            var first = root.heldPlay;
+            spotify.pause();
+            spotify.play();
+            var second = spotify._expect;
+            ignoreWarning("Music: Spotify /player/play answered 503");
+            first(503, null);
+            verify(spotify.isPlaying, "the first play's refusal stopped the second");
+            verify(spotify._expect === second);
+        }
+
+        function test_a_late_refusal_does_not_undo_a_shown_play() {
+            pausedAtForty();
+            spotify.play();
+            report(true, 41000);
+            compare(spotify._expect, null);
+            ignoreWarning("Music: Spotify /player/play answered 503");
+            answerPlay(503, null);
+            verify(spotify.isPlaying, "the report showed it playing");
+        }
+
+        function test_a_late_refusal_leaves_the_next_track_alone() {
+            pausedAtForty();
+            spotify.play();
+            root.answers["POST /player/load"] = [200, { ok: true, duration_ms: 100000 }];
+            spotify.load("spotify:track:y");
+            spotify.play();
+            var load = spotify._expect;
+            compare(load.what, "load");
+            ignoreWarning("Music: Spotify /player/play answered 503");
+            answerPlay(503, null);
+            verify(spotify.isPlaying);
+            verify(spotify._expect === load);
+        }
+
+        function test_a_refused_second_play_stops_the_counter_at_once() {
+            playing();
+            spotify.pause();
+            report(false, 40000);
+            spotify.play();
+            for (var i = 0; i < spotify.checkPolls - 1; ++i)
+                report(false, 40000);
+            verify(spotify.isPlaying);
+            root.answers["POST /player/play"] = [503, { error: "rate limited" }];
+            ignoreWarning("Music: Spotify did not play (it reports spotify:track:x paused 6 times); asking again");
+            ignoreWarning("Music: Spotify /player/play answered 503: rate limited");
+            report(false, 40000);
+            compare(sent("/player/play"), 2);
+            verify(!spotify.isPlaying);
+            compare(spotify._expect, null);
         }
 
         function test_pause_mid_track_is_no_end() {
