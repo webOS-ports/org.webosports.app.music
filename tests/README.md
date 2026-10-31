@@ -44,6 +44,12 @@ writing calls.
   poll sent before the last command is dropped, and a different play state
   needs two reports in a row - so a stray report neither undoes a pause nor
   activates the media session again.
+- `tst_resume.qml`: Player playing on after the sound server went away,
+  which the app sees only as the engine going to Stopped (here stopped
+  behind Player's back): again from where it was, later and later, five
+  tries and then paused there; a pause, another track or the end of the
+  queue is no loss, playing meanwhile plays from there too, and Spotify's
+  engine (Stopped only while librespot loads) is left alone.
 - `tst_ui.qml` `test_18_streaming`: the Streaming category, a service's
   search, playing a result, its menu, a playlist with a streamed track, and
   the per-service section in Search.

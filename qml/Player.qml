@@ -114,6 +114,17 @@ Item {
     // A start asked for before the track was loaded (seek to resume point).
     property real _pendingSeek: -1
     property bool _wantPlay: false
+    // Where a track that stopped by itself is played again from, -1 for
+    // none, and how often that has been tried. _playingAt is where it last
+    // played: Qt's FFmpeg backend is back at 0 before it says Stopped.
+    property real _resumeAt: -1
+    property real _playingAt: 0
+    property int _resumeTries: 0
+    property int _resumeDelay: 1000
+    // Set while a track's end is handled: Qt's GStreamer backend says
+    // Stopped after EndOfMedia, when the repeat or the next track has
+    // already changed the status.
+    property bool _ending: false
 
     Engine {
         id: engineA
@@ -174,11 +185,17 @@ Item {
         }
         _wantPlay = true;
         _lastTick = Date.now();
+        if (_resumeAt >= 0 && active.playbackState === MediaPlayer.StoppedState) {
+            resumeTimer.stop();
+            _resume();
+            return;
+        }
         active.play();
     }
 
     function pause() {
         _wantPlay = false;
+        _cancelResume();
         active.pause();
         if (_fadingOut)
             _endFade();
@@ -391,6 +408,8 @@ Item {
         if (resumeAt === 0 && resumeLookup)
             resumeAt = resumeLookup(track) || 0;
         _pendingSeek = resumeAt > 0 ? resumeAt : -1;
+        _cancelResume();
+        _playingAt = 0;
         _wantPlay = andPlay;
         if (resolving) {
             _resolveAndLoad(track, serial);
@@ -504,6 +523,8 @@ Item {
         }
         if (engine !== active)
             return;
+        _ending = true;
+        Qt.callLater(function() { player._ending = false; });
         _completed = true;
         _failures = 0;
         var pos = Queue.nextPos(queue, true);
@@ -556,6 +577,55 @@ Item {
         }
         _set(Queue.jump(queue, pos));
         _startCurrent(true, 0);
+    }
+
+    /* The active engine stopped while it was to play, not at the end and
+     * not failed: the sound server went away. GStreamer's pulsesink then
+     * stops the pipeline and Qt reports no error, only Stopped; and a start
+     * before the server is back stops the same way. So: from where it was,
+     * again after 1, 2, 4, 8 and 16 s, then paused there. Spotify plays in
+     * librespot, which reports such a stop as a pause; its engine is
+     * Stopped only while librespot loads a track. */
+    function _stoppedByItself(serial) {
+        var e = active;
+        if (serial !== _startSerial || _spotifyActive || !_wantPlay || !current || e.path !== current.path
+                || resumeTimer.running || e.playbackState !== MediaPlayer.StoppedState
+                || e.mediaStatus === MediaPlayer.EndOfMedia || e.mediaStatus === MediaPlayer.InvalidMedia)
+            return;
+        resumeSettle.stop();
+        if (_resumeAt < 0)
+            _resumeAt = _playingAt;
+        if (_resumeTries >= 5) {
+            var at = _resumeAt;
+            console.warn("Music: no sound server; paused at " + Math.round(at) + " ms");
+            _wantPlay = false;
+            _cancelResume();
+            seek(at);
+            return;
+        }
+        resumeTimer.interval = _resumeDelay * Math.pow(2, _resumeTries);
+        resumeTimer.start();
+    }
+
+    function _resume() {
+        if (_resumeAt < 0 || _spotifyActive || !_wantPlay || !current || active.path !== current.path
+                || active.playbackState !== MediaPlayer.StoppedState) {
+            _cancelResume();
+            return;
+        }
+        _resumeTries++;
+        console.warn("Music: the sound server went away; playing on from " + Math.round(_resumeAt)
+                     + " ms, try " + _resumeTries);
+        seek(_resumeAt);
+        _lastTick = Date.now();
+        active.play();
+    }
+
+    function _cancelResume() {
+        resumeTimer.stop();
+        resumeSettle.stop();
+        _resumeAt = -1;
+        _resumeTries = 0;
     }
 
     function _gainFor(track) {
@@ -713,6 +783,19 @@ Item {
         onTriggered: player._saveBookmark()
     }
 
+    Timer {
+        id: resumeTimer
+        onTriggered: player._resume()
+    }
+
+    // Qt says Playing as soon as it is asked to play: playing on for a few
+    // seconds is what tells that the sound server is back.
+    Timer {
+        id: resumeSettle
+        interval: 5000
+        onTriggered: if (player.playing) player._cancelResume()
+    }
+
     // Until the engine reports the new position, show where the user let go.
     Timer {
         id: seekSettle
@@ -729,7 +812,17 @@ Item {
                 player._failures = 0;
                 player._failedPath = "";
                 player._lastTick = Date.now();
+                if (player._resumeAt >= 0 && !resumeSettle.running)
+                    resumeSettle.start();
+            } else if (player.active.playbackState === MediaPlayer.StoppedState && !player._ending) {
+                // Once an end has been handled: the FFmpeg backend says
+                // Stopped before EndOfMedia.
+                Qt.callLater(player._stoppedByItself, player._startSerial);
             }
+        }
+        function onPositionChanged() {
+            if (player.active.isPlaying && player.active.position > 0)
+                player._playingAt = player.active.position;
         }
         function onSeekableChanged() {
             // Qt's FFmpeg backend says seekable a moment before it can
