@@ -42,12 +42,19 @@ Item {
     // later with held(code, json): a reply still on its way.
     property bool holdStatus: false
     property var held: null
+    // The same for a load: its reply is kept in heldLoad.
+    property bool holdLoad: false
+    property var heldLoad: null
     function fakeTransport(method, url, body, done) {
         var path = url.replace(/^http:\/\/127\.0\.0\.1:8730/, "");
         root.calls = root.calls.concat([{ method: method, path: path, body: body }]);
         var key = method + " " + path.replace(/\?.*$/, "");
         if (holdStatus && key === "GET /player/status") {
             root.held = done;
+            return;
+        }
+        if (holdLoad && key === "POST /player/load") {
+            root.heldLoad = done;
             return;
         }
         var a = root.answers[key];
@@ -534,6 +541,8 @@ Item {
             root.answers = {};
             root.holdStatus = false;
             root.held = null;
+            root.holdLoad = false;
+            root.heldLoad = null;
             endSpy.clear();
             spotify.unload();
         }
@@ -587,11 +596,185 @@ Item {
             spotify.load("spotify:track:x");
             spotify.play();
             verify(spotify.isPlaying);
+            // The daemon shows the load.
+            report(true, 0);
+            compare(spotify._expect, null);
         }
 
         function report(isPlaying, position, asked) {
-            spotify._onStatus(200, { is_playing: isPlaying, position_ms: position, uri: "spotify:track:x",
+            reportAs("spotify:track:x", isPlaying, position, asked);
+        }
+
+        function reportAs(uri, isPlaying, position, asked) {
+            spotify._onStatus(200, { is_playing: isPlaying, position_ms: position, uri: uri,
                                      duration_ms: 200000 }, asked === undefined ? spotify._commands : asked);
+        }
+
+        function sent(path) {
+            return root.calls.filter(function(c) { return c.path === path; }).length;
+        }
+
+        // Loaded and asked to play, with no report yet.
+        function loading() {
+            root.answers["POST /player/load"] = [200, { ok: true, duration_ms: 200000 }];
+            root.answers["POST /player/pause"] = [200, { ok: true }];
+            root.answers["POST /player/play"] = [200, { ok: true }];
+            spotify.load("spotify:track:x");
+            spotify.play();
+            verify(spotify.isPlaying);
+            compare(sent("/player/load"), 1);
+        }
+
+        // 12:32:55 on mindphone: the load was answered 200, librespot never
+        // loaded it, and the reports kept naming the track before. It is
+        // sent once more, then the engine fails instead of showing playing.
+        function test_a_load_that_does_not_show_is_sent_again_then_fails() {
+            loading();
+            var reason = "";
+            var onFailed = function(r) { reason = r; };
+            spotify.failed.connect(onFailed);
+            for (var i = 0; i < spotify.checkPolls - 1; ++i)
+                reportAs("spotify:track:before", true, 1000 + i);
+            compare(sent("/player/load"), 1, "sent again before checkPolls reports");
+            ignoreWarning("Music: Spotify did not load (it reports spotify:track:before playing 6 times); asking again");
+            reportAs("spotify:track:before", true, 9000);
+            compare(sent("/player/load"), 2);
+            compare(root.calls.filter(function(c) { return c.path === "/player/load"; })[1].body.uri, "spotify:track:x");
+            verify(spotify.isPlaying);
+            for (i = 0; i < spotify.checkPolls - 1; ++i)
+                reportAs("spotify:track:before", true, 10000 + i);
+            compare(reason, "");
+            ignoreWarning("Music: Spotify did not load when asked twice (it reports spotify:track:before playing)");
+            reportAs("spotify:track:before", true, 20000);
+            compare(reason, "Spotify did not start the track.");
+            verify(!spotify.isPlaying);
+            compare(sent("/player/load"), 2, "asked a third time");
+            spotify.failed.disconnect(onFailed);
+        }
+
+        function test_a_load_that_shows_after_it_is_sent_again_plays() {
+            loading();
+            var reason = "";
+            var onFailed = function(r) { reason = r; };
+            spotify.failed.connect(onFailed);
+            ignoreWarning("Music: Spotify did not load (it reports no track paused 6 times); asking again");
+            for (var i = 0; i < spotify.checkPolls; ++i)
+                spotify._onStatus(200, { is_playing: false, position_ms: 0 }, spotify._commands);
+            compare(sent("/player/load"), 2);
+            report(true, 3000);
+            compare(spotify._expect, null);
+            verify(spotify.isPlaying);
+            compare(spotify.position, 3000);
+            compare(reason, "");
+            spotify.failed.disconnect(onFailed);
+        }
+
+        // A second load that is answered "no" fails the engine.
+        function test_a_load_sent_again_and_refused_fails() {
+            loading();
+            var reason = "";
+            var onFailed = function(r) { reason = r; };
+            spotify.failed.connect(onFailed);
+            root.answers["POST /player/load"] = [409, { error: "librespot device not found" }];
+            ignoreWarning("Music: Spotify did not load (it reports spotify:track:before playing 6 times); asking again");
+            for (var i = 0; i < spotify.checkPolls; ++i)
+                reportAs("spotify:track:before", true, 1000);
+            compare(reason, "librespot device not found");
+            verify(!spotify.isPlaying);
+            compare(spotify._expect, null);
+            spotify.failed.disconnect(onFailed);
+        }
+
+        // 12:32:47: a play answered 200 that did not reach librespot.
+        function test_a_play_that_does_not_show_is_sent_again_then_taken() {
+            playing();
+            spotify.pause();
+            report(false, 40000);
+            compare(spotify._expect, null);
+            spotify.play();
+            compare(sent("/player/play"), 1);
+            for (var i = 0; i < spotify.checkPolls - 1; ++i)
+                report(false, 40000);
+            verify(spotify.isPlaying, "a lagging report was taken");
+            var before = spotify._commands;
+            ignoreWarning("Music: Spotify did not play (it reports spotify:track:x paused 6 times); asking again");
+            report(false, 40000);
+            compare(sent("/player/play"), 2);
+            // Replies to polls sent before the second play are about before it.
+            for (i = 0; i < spotify.checkPolls; ++i)
+                report(false, 40000, before);
+            verify(spotify._expect !== null, "reports from before the second play counted");
+            for (i = 0; i < spotify.checkPolls - 1; ++i)
+                report(false, 40000);
+            verify(spotify.isPlaying);
+            ignoreWarning("Music: Spotify did not play when asked twice (it reports spotify:track:x paused)");
+            report(false, 40000);
+            verify(!spotify.isPlaying, "the paused report was not taken");
+            compare(sent("/player/play"), 2);
+        }
+
+        // 12:37:15: a pause answered 200 and the music played on.
+        function test_a_pause_that_does_not_show_is_sent_again_then_taken() {
+            playing();
+            root.calls = [];
+            spotify.pause();
+            compare(sent("/player/pause"), 1);
+            for (var i = 0; i < spotify.checkPolls - 1; ++i)
+                report(true, 40000 + i * 1000);
+            verify(!spotify.isPlaying);
+            ignoreWarning("Music: Spotify did not pause (it reports spotify:track:x playing 6 times); asking again");
+            report(true, 46000);
+            compare(sent("/player/pause"), 2);
+            for (i = 0; i < spotify.checkPolls - 1; ++i)
+                report(true, 47000 + i * 1000);
+            verify(!spotify.isPlaying);
+            ignoreWarning("Music: Spotify did not pause when asked twice (it reports spotify:track:x playing)");
+            report(true, 52000);
+            verify(spotify.isPlaying, "the playing report was not taken");
+            compare(spotify.position, 52000);
+        }
+
+        // 12:31:13: just after a load the reports still say paused; two of
+        // them used to pause it.
+        function test_lagging_reports_after_a_load_are_not_taken() {
+            loading();
+            for (var i = 0; i < spotify.checkPolls - 1; ++i)
+                report(false, 0);
+            verify(spotify.isPlaying, "a lagging report after the load paused it");
+            report(true, 2000);
+            verify(spotify.isPlaying);
+            compare(spotify._expect, null);
+        }
+
+        // The reply to a load for a track since left behind is not about
+        // the track now loading.
+        function test_a_reply_to_an_earlier_load_is_dropped() {
+            root.answers["POST /player/play"] = [200, { ok: true }];
+            root.holdLoad = true;
+            spotify.load("spotify:track:a");
+            spotify.play();
+            var first = root.heldLoad;
+            verify(first !== null, "the load was not sent");
+            spotify.load("spotify:track:b");
+            spotify.play();
+            var second = root.heldLoad;
+            verify(second !== first);
+            root.holdLoad = false;
+            first(200, { ok: true, duration_ms: 1000 });
+            compare(spotify._expect, null, "the reply for a was taken for b");
+            compare(spotify.duration, 0);
+            second(200, { ok: true, duration_ms: 5000 });
+            compare(spotify.duration, 5000);
+            compare(spotify._expect.what, "load");
+            compare(spotify._expect.body.uri, "spotify:track:b");
+        }
+
+        // A command answered other than 200 is in the journal.
+        function test_a_refused_command_is_logged() {
+            playing();
+            root.answers["POST /player/pause"] = [503, { error: "no device" }];
+            ignoreWarning("Music: Spotify /player/pause answered 503: no device");
+            spotify.pause();
         }
 
         // The flicker: paused, and the next report still says playing.
@@ -677,9 +860,11 @@ Item {
         function test_pause_mid_track_is_no_end() {
             root.answers["POST /player/load"] = [200, { ok: true, duration_ms: 200000 }];
             root.answers["POST /player/pause"] = [200, { ok: true }];
-            root.answers["GET /player/status"] = [200, { is_playing: false, position_ms: 50000, uri: "spotify:track:x", duration_ms: 200000 }];
+            root.answers["GET /player/status"] = [200, { is_playing: true, position_ms: 49000, uri: "spotify:track:x", duration_ms: 200000 }];
             spotify.load("spotify:track:x");
             spotify.play();
+            tryCompare(spotify, "_expect", null, 3000);
+            root.answers["GET /player/status"] = [200, { is_playing: false, position_ms: 50000, uri: "spotify:track:x", duration_ms: 200000 }];
             wait(2500);
             compare(endSpy.count, 0);
             compare(spotify.position, 50000);

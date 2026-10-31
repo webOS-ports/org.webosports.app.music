@@ -36,6 +36,14 @@ import QtMultimedia
  * whatever else was playing. So a report sent before the last command is
  * dropped, and a play state other than ours is only taken once
  * confirmPolls reports in a row agree on it.
+ *
+ * The Web API also takes commands that never reach librespot: on mindphone
+ * a play at 12:32:47 and a load at 12:32:55 were answered 200, librespot
+ * never loaded the track, and the reports went on naming the track before. So every
+ * load, play and pause is checked: once its effect has not shown in
+ * checkPolls reports it is sent once more, and if it still does not show
+ * the engine says so (a load fails, a play or pause takes what the daemon
+ * reports) and the journal has a line for each step.
  */
 Item {
     id: engine
@@ -52,6 +60,9 @@ Item {
     property real rate: 1
     // reports in a row that must agree before a different play state is taken
     property int confirmPolls: 2
+    // reports a command may take to show before it is sent again, and once
+    // more before it is given up
+    property int checkPolls: 6
 
     readonly property int playbackState: _playing ? MediaPlayer.PlayingState
                                                   : (_loaded ? MediaPlayer.PausedState : MediaPlayer.StoppedState)
@@ -77,6 +88,9 @@ Item {
     property string _error: ""
     property int _commands: 0          // bumped by every command sent
     property int _disagreed: 0         // reports in a row against _playing
+    // The last load, play or pause, until the reports show it:
+    // { what, playing, endpoint, body, polls, resent }.
+    property var _expect: null
 
     // Every command makes the reports asked for before it stale.
     function _command() {
@@ -97,6 +111,7 @@ Item {
         if (p === _path)
             return;
         _command();
+        _expect = null;
         _path = p || "";
         _loaded = false;
         _playing = false;
@@ -118,7 +133,11 @@ Item {
             return;
         _command();
         if (!_loaded) {
-            _call("POST", "/player/load", { uri: _path, position_ms: Math.round(_startAt) }, function(code, data) {
+            const path = _path;
+            const body = { uri: _path, position_ms: Math.round(_startAt) };
+            _call("POST", "/player/load", body, function(code, data) {
+                if (path !== engine._path)
+                    return;
                 if (code !== 200) {
                     engine._error = (data && data.error) ? data.error : "Spotify is not ready.";
                     engine.failed(engine._error);
@@ -130,11 +149,13 @@ Item {
                 engine._reportedAt = Date.now();
                 if (data && data.duration_ms > 0)
                     engine._duration = data.duration_ms;
+                engine._expectNow("load", true, "/player/load", body);
                 engine._sendVolume();
             });
             return;
         }
-        _call("POST", "/player/play", null, null);
+        _send("/player/play", null);
+        _expectNow("play", true, "/player/play", null);
         _playing = true;
         _reportedAt = Date.now();
         _reported = _position;
@@ -142,9 +163,50 @@ Item {
 
     function pause() {
         _command();
-        if (_loaded)
-            _call("POST", "/player/pause", null, null);
+        if (_loaded) {
+            _send("/player/pause", null);
+            _expectNow("pause", false, "/player/pause", null);
+        }
         _playing = false;
+    }
+
+    // A transport command whose reply is only logged when it is not 200.
+    function _send(endpoint, body) {
+        _call("POST", endpoint, body, function(code, data) {
+            if (code !== 200)
+                console.warn("Music: Spotify " + endpoint + " answered " + code
+                             + ((data && data.error) ? ": " + data.error : ""));
+        });
+    }
+
+    function _expectNow(what, playing, endpoint, body) {
+        _expect = { what: what, playing: playing, endpoint: endpoint, body: body,
+                    polls: 0, resent: false };
+    }
+
+    // The command in _expect has not shown: send it once more.
+    function _resend(reported) {
+        var e = _expect;
+        console.warn("Music: Spotify did not " + e.what + " (it reports " + reported
+                     + " " + checkPolls + " times); asking again");
+        _command();
+        e.polls = 0;
+        e.resent = true;
+        if (e.what !== "load") {
+            _send(e.endpoint, e.body);
+            return;
+        }
+        var path = _path;
+        _call("POST", e.endpoint, e.body, function(code, data) {
+            if (path !== engine._path || engine._expect !== e)
+                return;
+            if (code !== 200) {
+                engine._expect = null;
+                engine._playing = false;
+                engine._error = (data && data.error) ? data.error : "Spotify is not ready.";
+                engine.failed(engine._error);
+            }
+        });
     }
 
     function stop() {
@@ -207,9 +269,35 @@ Item {
             endOfMedia();
             return;
         }
+        var playing = !!s.is_playing;
+        if (_expect) {
+            if (ours && playing === _expect.playing) {
+                _expect = null;
+            } else if (++_expect.polls < checkPolls) {
+                // Not yet: the reports lag the commands.
+                return;
+            } else {
+                const reported = (s.uri ? s.uri : "no track") + (playing ? " playing" : " paused");
+                if (!_expect.resent) {
+                    _resend(reported);
+                    return;
+                }
+                const what = _expect.what;
+                _expect = null;
+                console.warn("Music: Spotify did not " + what + " when asked twice (it reports "
+                             + reported + ")");
+                if (what === "load" || (what === "play" && !ours)) {
+                    _playing = false;
+                    _error = "Spotify did not start the track.";
+                    failed(_error);
+                    return;
+                }
+                // Take what it reports now, without waiting for more.
+                _disagreed = confirmPolls - 1;
+            }
+        }
         if (!ours)
             return;
-        var playing = !!s.is_playing;
         if (playing !== _playing && ++_disagreed < confirmPolls)
             return;
         _disagreed = 0;
