@@ -29,6 +29,7 @@ import MusicApp 1.0
 
 import LuneOS.Components 1.0 as LC
 import "components"
+import "js/DashboardRule.js" as DashboardRule
 import "js/Library.js" as Library
 import "js/Queue.js" as Queue
 import "js/Streaming.js" as Streaming
@@ -55,7 +56,8 @@ WebOSWindow {
     color: theme.background
 
     // Closing the card while music plays must not stop it: the app stays
-    // alive, with its dashboard, until the music is paused.
+    // alive, and so does its dashboard, paused or not. Closing the card on
+    // paused music ends the app (onWindowCloseRequested below).
     keepAlive: player.playing
 
     // Where to look for music and where playlists are exported to.
@@ -417,6 +419,10 @@ WebOSWindow {
                 appWindow.openNowPlaying();
             }
         }
+        function onPlayingChanged() {
+            if (player.playing)
+                appWindow.dashboardDismissed = false;
+        }
     }
 
     Connections {
@@ -506,18 +512,44 @@ WebOSWindow {
     // shell's close could reach it, the music playing on.
     readonly property bool cardActive: appWindow.active
     // Back in front: an account may have been added or removed meanwhile.
-    onCardActiveChanged: if (cardActive) streaming.refresh()
+    onCardActiveChanged: {
+        if (!cardActive)
+            return;
+        cardSeen = true;
+        dashboardDismissed = false;
+        streaming.refresh();
+    }
+    property bool cardSeen: false
+    property bool dashboardDismissed: false
+
+    // Paused, the dashboard would hold the app open with its last card gone.
+    // Only comes while keepAlive is false: playing, the card just hides.
+    onWindowCloseRequested: dashboardDismissed = true
 
     Loader {
         id: dashboardLoader
-        active: !!(player.hasQueue && player.playing && !appWindow.cardActive && !appWindow.exhibitionWanted)
+        active: DashboardRule.wanted({
+            hasQueue: player.hasQueue,
+            playing: player.playing,
+            cardActive: appWindow.cardActive,
+            cardSeen: appWindow.cardSeen,
+            exhibition: appWindow.exhibitionWanted,
+            dismissed: appWindow.dashboardDismissed
+        })
         sourceComponent: Dashboard {
             player: appWindow.player
             theme: themeObject
             onOpenRequested: appWindow.raise()
             // Only the user's swipe pauses; the Loader letting it go (the
-            // card back in front) hides it too.
-            onDismissed: if (dashboardLoader.active) appWindow.player.pause()
+            // card back in front) hides it too. It stays away until the music
+            // plays or the card is back; later, as this runs in its signal.
+            onDismissed: {
+                if (!dashboardLoader.active)
+                    return;
+                if (appWindow.player.playing)
+                    appWindow.player.pause();
+                Qt.callLater(function() { appWindow.dashboardDismissed = true; });
+            }
         }
     }
 

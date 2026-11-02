@@ -81,8 +81,9 @@ Tablet (TouchPad, 1024x768):
   left. Sleep timer (minutes or end of track, fading out), playback speed.
 - Pauses for phone calls and carries on after (QOfono).
 - Keeps the device awake while playing; the card can be closed and the music
-  plays on, with a dashboard to control it; swiping the dashboard away
-  stops it (Spotify included, which plays outside the app).
+  plays on, with a dashboard to control it, which stays up while paused;
+  swiping the dashboard away stops the music (Spotify included, which plays
+  outside the app).
 
 **Streaming** (Synergy accounts)
 - Spotify, Tidal, Deezer, Qobuz, Apple Music, SoundCloud, Jamendo and the
@@ -130,7 +131,7 @@ Tablet (TouchPad, 1024x768):
 - Exhibition (`"exhibitionMode": true`): the shell launches the app with
   `dockMode` and it opens a window of the dock type - clock, cover, track and
   large controls, or Shuffle All when nothing is queued.
-- Dashboard (floating window) while the card is away and music plays.
+- Dashboard (floating window) while the card is away and there is a queue.
 - Banners through `com.webos.notification` for things worth knowing.
 - The app menu (status bar): Now Playing, Up Next, Sleep Timer, Preferences.
 - Back gesture everywhere (Escape), no Back keys.
