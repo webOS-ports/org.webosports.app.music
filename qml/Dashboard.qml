@@ -22,8 +22,9 @@ import LunaNext.Common 0.1
 import "components"
 
 /*
- * The dashboard in the notification area while music plays and the card
- * is not in front: the cover, the track, and previous / play-pause / next.
+ * The dashboard in the notification area while there is a queue and the
+ * card is not in front, also paused: the cover, the track, and previous /
+ * play-pause / next.
  * A tap anywhere else brings the card back. The card shell takes any
  * floating window as a dashboard and reads its height from
  * LuneOS_dashheight when the window first shows, so those are set first.

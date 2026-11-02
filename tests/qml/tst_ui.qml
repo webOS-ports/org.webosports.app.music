@@ -484,6 +484,30 @@ Item {
             dash.destroy();
         }
 
+        // Closing the card on paused music, or swiping the dashboard, keeps
+        // it away until the music plays or the card is back.
+        function test_21_dashboard_stays_away() {
+            root.app.player.pause();
+            root.app.dashboardDismissed = false;
+            // The card closed under a paused dashboard ends the app; with
+            // nothing up it ends the usual way, or stays for the exhibition.
+            var ended = 0;
+            root.app.endApp = function() { ended++; };
+            root.app.cardClosed(false);
+            compare(ended, 0);
+            verify(root.app.dashboardDismissed);
+            root.app.dashboardDismissed = false;
+            root.app.cardClosed(true);
+            compare(ended, 1);
+            verify(root.app.dashboardDismissed);
+            root.app.player.playingChanged();
+            verify(root.app.dashboardDismissed, "not playing: stays away");
+            root.app.player.playTracks(root.app.library.lib.songs.slice(0, 1), 0, false);
+            tryCompare(root.app.player, "playing", true, 5000);
+            tryCompare(root.app, "dashboardDismissed", false, 1000);
+            root.app.player.pause();
+        }
+
         function test_99_all_sizes() {
             var sizes = [[480, 800], [320, 480], [720, 720], [1024, 768], [768, 1024]];
             var red = root.app.library.lib.albums.filter(function(a) { return a.title === "Red Sky"; })[0];
