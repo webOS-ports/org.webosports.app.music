@@ -522,9 +522,25 @@ WebOSWindow {
     property bool cardSeen: false
     property bool dashboardDismissed: false
 
-    // Paused, the dashboard would hold the app open with its last card gone.
-    // Only comes while keepAlive is false: playing, the card just hides.
-    onWindowCloseRequested: dashboardDismissed = true
+    // Only comes while keepAlive is false: playing, the card just hides. The
+    // dashboard up on paused music: Qt does not see this as the last window
+    // going, and a process left without a card refuses every relaunch. With
+    // the exhibition window open instead, the app stays for that.
+    onWindowCloseRequested: cardClosed(dashboardLoader.active)
+    function cardClosed(dashboardUp) {
+        dashboardDismissed = true;
+        if (dashboardUp)
+            endApp();
+    }
+    property var endApp: Qt.quit
+
+    // As the legacy app: the card brought back on Now Playing. A relaunch, as
+    // raise() leaves a closed or minimised card where it is.
+    function openFromDashboard() {
+        service.call("luna://com.webos.service.applicationManager/launch",
+                     JSON.stringify({ id: appId, params: { page: "nowPlaying" } }),
+                     function() {}, function() {});
+    }
 
     Loader {
         id: dashboardLoader
@@ -539,7 +555,7 @@ WebOSWindow {
         sourceComponent: Dashboard {
             player: appWindow.player
             theme: themeObject
-            onOpenRequested: appWindow.raise()
+            onOpenRequested: appWindow.openFromDashboard()
             // Only the user's swipe pauses; the Loader letting it go (the
             // card back in front) hides it too. It stays away until the music
             // plays or the card is back; later, as this runs in its signal.

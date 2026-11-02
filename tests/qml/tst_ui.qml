@@ -489,7 +489,16 @@ Item {
         function test_21_dashboard_stays_away() {
             root.app.player.pause();
             root.app.dashboardDismissed = false;
-            root.app.windowCloseRequested(null);
+            // The card closed under a paused dashboard ends the app; with
+            // nothing up it ends the usual way, or stays for the exhibition.
+            var ended = 0;
+            root.app.endApp = function() { ended++; };
+            root.app.cardClosed(false);
+            compare(ended, 0);
+            verify(root.app.dashboardDismissed);
+            root.app.dashboardDismissed = false;
+            root.app.cardClosed(true);
+            compare(ended, 1);
             verify(root.app.dashboardDismissed);
             root.app.player.playingChanged();
             verify(root.app.dashboardDismissed, "not playing: stays away");
