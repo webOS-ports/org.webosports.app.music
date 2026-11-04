@@ -36,6 +36,8 @@ Item {
     property string detail: Library.summary(songs)
     property string artPath: songs.length ? songs[0].path : ""
     property string artAlbum: songs.length ? songs[0].album : ""
+    // A streamed album's or artist's cover on the web, else the first song's.
+    property string artUrl: songs.length && songs[0].artUrl ? songs[0].artUrl : ""
     property string icon: "album"
     property bool roundCover: false
     property var songs: []
@@ -86,6 +88,13 @@ Item {
         cacheBuffer: page.theme.rowHeight * 10
         interactive: !dragState.active
 
+        // A header that grows after the page opened (a streamed artist's
+        // albums arriving) would leave the list scrolled into it: until
+        // the list has been moved, it stays at its top.
+        property bool moved: false
+        onMovementStarted: moved = true
+        onOriginYChanged: if (!moved) positionViewAtBeginning()
+
         header: Column {
             width: list.width
 
@@ -98,6 +107,7 @@ Item {
                 detail: page.detail
                 artPath: page.artPath
                 artAlbum: page.artAlbum
+                artUrl: page.artUrl
                 icon: page.icon
                 round: page.roundCover
                 canPlay: page.songs.length > 0

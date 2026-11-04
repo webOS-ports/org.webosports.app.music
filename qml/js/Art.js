@@ -35,8 +35,8 @@ function source(path, album, artUrl) {
 /*
  * A streamed track's cover at about px pixels, where its service serves
  * covers at other sizes by URL: the thumbnail a search gives (Spotify's
- * 64 px, SoundCloud's 100, Qobuz's 230, Deezer's 250, Tidal's 320) is
- * blurred and blocky shown large. Other URLs as they are.
+ * 64 px, SoundCloud's 100, Qobuz's 230, Deezer's 250, Subsonic's 300,
+ * Tidal's 320) is blurred and blocky shown large. Other URLs as they are.
  */
 function sized(url, px) {
     url = String(url || "");
@@ -55,6 +55,9 @@ function sized(url, px) {
     // Qobuz: 50, 230, 600 and max.
     if ((m = /^(https:\/\/static\.qobuz\.com\/images\/covers\/.+_)(?:50|230|300)(\.jpg)$/.exec(url)))
         return m[1] + "600" + m[2];
+    // Subsonic, through the music service: 300 px unless asked, any size.
+    if (/^http:\/\/127\.0\.0\.1:8730\/subsonicart\?id=[^&]+$/.test(url))
+        return url + "&size=" + (px > 640 ? 1000 : 640);
     // SoundCloud: large is 100 px, t500x500 500.
     if ((m = /^(https:\/\/i\d*\.sndcdn\.com\/.+-)(?:large|t300x300|crop)(\.(?:jpg|png))$/.exec(url)))
         return m[1] + "t500x500" + m[2];

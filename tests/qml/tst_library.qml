@@ -220,6 +220,14 @@ TestCase {
     // Streamed covers shown large are asked for large, as each service names
     // its sizes (the URLs are the services' own); small ones stay thumbnails.
     function test_art_sized() {
+        compare(Art.sized("http://127.0.0.1:8730/subsonicart?id=al-7Io_c95", 900),
+                "http://127.0.0.1:8730/subsonicart?id=al-7Io_c95&size=1000");
+        compare(Art.sized("http://127.0.0.1:8730/subsonicart?id=al-7Io_c95", 500),
+                "http://127.0.0.1:8730/subsonicart?id=al-7Io_c95&size=640");
+        compare(Art.sized("http://127.0.0.1:8730/subsonicart?id=al-7Io_c95&size=64", 900),
+                "http://127.0.0.1:8730/subsonicart?id=al-7Io_c95&size=64", "a size given is kept");
+        compare(Art.sized("http://127.0.0.1:8730/subsonicart?id=al-7Io_c95", 300),
+                "http://127.0.0.1:8730/subsonicart?id=al-7Io_c95", "small: as it is");
         compare(Art.sized("https://i.scdn.co/image/ab67616d000048513cc08d0d2f337c9992c21d9c", 900),
                 "https://i.scdn.co/image/ab67616d0000b2733cc08d0d2f337c9992c21d9c");
         compare(Art.sized("https://i.scdn.co/image/ab67616d00001e023cc08d0d2f337c9992c21d9c", 500),

@@ -796,6 +796,10 @@ WebOSWindow {
     function openAlbum(album) {
         if (!album)
             return;
+        if (album.remote) {
+            openServiceAlbum(album);
+            return;
+        }
         var page = push("pages/TrackListPage.qml", {
             title: album.title,
             subtitle: album.artist,
@@ -942,7 +946,86 @@ WebOSWindow {
         page.objectName = "playlistFilePage";
     }
 
+    /* A streaming service: its library when it has one to browse (a
+     * Subsonic server), else - or with a text to look for - its search. */
     function openStreamingService(id, text) {
+        var p = streaming.provider(id);
+        if (!text && p && p.browse) {
+            var lib = push("pages/StreamLibraryPage.qml", { providerId: id });
+            lib.objectName = "streamLibraryPage";
+            return;
+        }
+        openStreamingSearch(id, text);
+    }
+
+    // Whether a page pushed earlier is still there: a reply that comes back
+    // after it was left has nowhere to go.
+    function onStack(page) {
+        return page !== null && stack.find(function(item) { return item === page; }) !== null;
+    }
+
+    // An album of a service's library: its tracks fetched as it opens.
+    function openServiceAlbum(album) {
+        var page = push("pages/TrackListPage.qml", {
+            title: album.title,
+            subtitle: album.artist,
+            detail: Streaming.albumDetail(album),
+            songs: [],
+            albumMode: true,
+            icon: "album",
+            artUrl: album.artUrl
+        });
+        page.objectName = "serviceAlbumPage";
+        page.loading = true;
+        streaming.browse(album.provider, "album", album.id, function(tracks, error) {
+            if (!onStack(page))
+                return;
+            page.loading = false;
+            page.songs = tracks;
+            if (error)
+                notify(error);
+        });
+    }
+
+    /* An artist of a service's library: their albums, then their songs as
+     * the albums' tracks come in, album by album (the first 30 albums). */
+    function openServiceArtist(artist) {
+        var page = push("pages/TrackListPage.qml", {
+            title: artist.name,
+            subtitle: streaming.providerName(artist.provider),
+            songs: [],
+            albums: [],
+            icon: "artist",
+            roundCover: true,
+            artUrl: artist.artUrl
+        });
+        page.objectName = "serviceArtistPage";
+        page.loading = true;
+        streaming.browse(artist.provider, "artist", artist.id, function(albums, error) {
+            if (!onStack(page))
+                return;
+            page.albums = albums;
+            if (error)
+                notify(error);
+            var next = function(i, songs) {
+                if (!onStack(page))
+                    return;
+                if (i >= Math.min(albums.length, 30)) {
+                    page.loading = false;
+                    return;
+                }
+                streaming.browse(artist.provider, "album", albums[i].id, function(tracks) {
+                    if (!onStack(page))
+                        return;
+                    page.songs = songs.concat(tracks);
+                    next(i + 1, page.songs);
+                });
+            };
+            next(0, []);
+        });
+    }
+
+    function openStreamingSearch(id, text) {
         var page = push("pages/StreamSearchPage.qml", { providerId: id });
         page.objectName = "streamSearchPage";
         if (text)
@@ -1093,6 +1176,23 @@ WebOSWindow {
     function albumMenu(album) {
         if (!album)
             return;
+        if (album.remote) {
+            // Its tracks are on the server: fetched first, then what to do with them.
+            streaming.browse(album.provider, "album", album.id, function(tracks, error) {
+                if (error || tracks.length === 0) {
+                    notify(error || "The album has no songs.");
+                    return;
+                }
+                var choices = _enqueueChoices(tracks);
+                if (album.artistId)
+                    choices.push({ label: "Go to Artist", action: function() {
+                        appWindow.openServiceArtist({ id: album.artistId, provider: album.provider, name: album.artist,
+                                                      artUrl: "", remote: true });
+                    } });
+                sheet.show(album.title, choices, album.artist);
+            });
+            return;
+        }
         var choices = _enqueueChoices(album.tracks);
         choices.push({ label: "Go to Artist", action: function() { appWindow.openArtist(library.artist(album.artist)); } });
         sheet.show(album.title, choices, album.artist);

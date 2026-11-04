@@ -22,7 +22,8 @@ import "../components"
 
 /*
  * The streaming services signed in in Accounts (and YouTube, which needs
- * no account), each opening a search of that service.
+ * no account), each opening a search of that service - or its library,
+ * for one that has a library to browse (a Subsonic server).
  */
 Item {
     id: view
@@ -40,7 +41,7 @@ Item {
             required property var modelData
             theme: view.theme
             title: modelData.name
-            subtitle: "Search " + modelData.name
+            subtitle: modelData.browse ? "Artists, albums and search" : "Search " + modelData.name
             icon: "stream"
             onClicked: appWindow.openStreamingService(modelData.id)
         }
@@ -54,7 +55,7 @@ Item {
         title: view.streaming.status === "unavailable" ? "Streaming is not running" : "No streaming services"
         text: view.streaming.status === "unavailable"
               ? "The music streaming service is not installed or not started."
-              : "Add Spotify, Tidal, Deezer, Qobuz, Apple Music, SoundCloud, Jamendo or the Internet Archive in Accounts to play them here."
+              : "Add Spotify, Tidal, Deezer, Qobuz, Apple Music, SoundCloud, Jamendo, the Internet Archive or your own Subsonic server in Accounts to play them here."
         buttonText: "Try Again"
         onButtonClicked: view.streaming.refresh()
     }

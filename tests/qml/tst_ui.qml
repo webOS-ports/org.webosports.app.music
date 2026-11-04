@@ -32,6 +32,8 @@ Item {
 
     readonly property string fixtures: String(Qt.resolvedUrl("../fixtures/music")).replace(/^file:\/\//, "")
     property var app: null
+    // The album lists the fake library was asked for.
+    property var libraryLists: []
 
     LunaService {
         id: bus
@@ -401,6 +403,175 @@ Item {
             root.app.streaming.transport = function(method, url, body, done) { done(404, null); };
             root.app.streaming.refresh();
             tryVerify(function() { return root.app.streaming.servicePlaylists.length === 0; });
+            lp.category = "albums";
+        }
+
+        // A service with a library of its own (a Subsonic server): its
+        // newest albums and its artists, an artist's albums and songs, an
+        // album's numbered tracks, and playing and queueing them.
+        function fakeLibrary(method, url, body, done) {
+            var path = url.replace(/^http:\/\/127\.0\.0\.1:8730/, "");
+            var q = path.replace(/^[^?]*\??/, "");
+            path = path.replace(/\?.*$/, "");
+            var cover = "file://" + (root.fixtures + "/../cover-red.jpg").split("/").map(encodeURIComponent).join("/");
+            var blue = { id: "al1", provider: "subsonic", name: "Deep Blue", artist: "Net Band", artist_id: "ar1",
+                         year: 2021, tracks: 2, thumbnail: cover };
+            var red = { id: "al2", provider: "subsonic", name: "Red Room", artist: "Net Band", artist_id: "ar1",
+                        year: 2019, tracks: 1, thumbnail: "" };
+            if (method === "GET" && path === "/providers")
+                return done(200, { providers: [{ id: "subsonic", name: "Subsonic", browse: true }] });
+            if (method === "GET" && path === "/provider/subsonic/albums") {
+                root.libraryLists.push(q);
+                return done(200, { albums: [blue, red] });
+            }
+            if (method === "GET" && path === "/provider/subsonic/artists")
+                return done(200, { artists: [
+                    { id: "ar1", provider: "subsonic", name: "Net Band", albums: 2, thumbnail: cover },
+                    { id: "ar2", provider: "subsonic", name: "Solo Act", albums: 1, thumbnail: "" }] });
+            if (method === "GET" && path === "/provider/subsonic/artist")
+                return done(200, { albums: q === "id=ar1" ? [blue, red] : [] });
+            if (method === "GET" && path === "/provider/subsonic/album") {
+                if (q === "id=al1")
+                    return done(200, { tracks: [
+                        { id: "1", provider: "subsonic", title: "Sun Stream", artist: "Net Band", album: "Deep Blue",
+                          track: 1, duration_ms: 3000, path: "subsonic:1", thumbnail: cover },
+                        { id: "2", provider: "subsonic", title: "Moon Stream", artist: "Net Band", album: "Deep Blue",
+                          track: 2, duration_ms: 3000, path: "subsonic:2", thumbnail: cover }] });
+                return done(200, { tracks: [
+                    { id: "3", provider: "subsonic", title: "Red Light", artist: "Net Band", album: "Red Room",
+                      track: 1, duration_ms: 3000, path: "subsonic:3", thumbnail: "" }] });
+            }
+            if (method === "POST" && path === "/provider/subsonic/resolve")
+                return done(200, { url: "file://" + (root.fixtures + "/Various/Summer Mix/0" + (body.trackId === "1" ? "1 Ana Ray" : "2 Cool Cats")
+                                                     + " - Sun.ogg").split("/").map(encodeURIComponent).join("/") });
+            done(404, { error: "no" });
+        }
+
+        function test_18_streaming_library() {
+            root.libraryLists = [];
+            root.app.streaming.transport = fakeLibrary;
+            root.app.streaming.refresh();
+            tryVerify(function() { return root.app.streaming.provider("subsonic") !== null; });
+            var lp = root.app.pageStack.get(0);
+            lp.category = "streaming";
+            wait(100);
+            tryCompare(findByName(lp, "streamingList"), "count", 1);
+            tryVerify(function() { return findByName(lp, "streamingList").itemAtIndex(0) !== null; });
+            compare(findByName(lp, "streamingList").itemAtIndex(0).subtitle, "Artists, albums and search");
+            screenshot("streaming-library-service");
+            // The service opens on its library, not a search.
+            root.app.openStreamingService("subsonic");
+            settle();
+            var lib = root.app.pageStack.currentItem;
+            compare(lib.objectName, "streamLibraryPage");
+            tryCompare(lib, "loading", false);
+            compare(lib.error, "");
+            compare(lib.newest.length, 2);
+            compare(lib.artists.length, 2);
+            compare(root.libraryLists, ["list=newest"]);
+            tryCompare(findByName(lib, "streamArtists"), "count", 2);
+            tryCompare(findByName(lib, "streamNewest"), "count", 2);
+            verify(findByName(lib, "streamLibrarySearch") !== null);
+            screenshot("stream-library");
+            // Its search is a row away.
+            root.app.openStreamingSearch("subsonic", "");
+            settle();
+            compare(root.app.pageStack.currentItem.objectName, "streamSearchPage");
+            root.app.pageStack.pop();
+            settle();
+            // An artist: their albums, then the songs on them.
+            root.app.openServiceArtist(lib.artists[0]);
+            settle();
+            var artist = root.app.pageStack.currentItem;
+            compare(artist.objectName, "serviceArtistPage");
+            compare(artist.title, "Net Band");
+            tryCompare(artist, "loading", false);
+            compare(artist.albums.length, 2);
+            compare(artist.albums[0].title, "Deep Blue");
+            compare(artist.songs.map(function(t) { return t.title; }), ["Sun Stream", "Moon Stream", "Red Light"]);
+            // Still at its top, cover and all, though its albums came later.
+            var tl = findByName(artist, "trackList");
+            tryVerify(function() { return Math.abs(tl.contentY - tl.originY) < 1; }, 2000);
+            screenshot("stream-artist");
+            // One of their albums: its tracks, numbered.
+            root.app.openAlbum(artist.albums[0]);
+            settle();
+            var album = root.app.pageStack.currentItem;
+            compare(album.objectName, "serviceAlbumPage");
+            compare(album.title, "Deep Blue");
+            compare(album.detail, "2021 · 2 songs");
+            verify(album.albumMode);
+            tryCompare(album, "loading", false);
+            compare(album.songs.length, 2);
+            compare(album.songs[1].track, 2);
+            verify(album.songs[0].remote);
+            screenshot("stream-album");
+            // Played as any streamed track is.
+            root.app.player.playTracks(album.songs, 0, false);
+            compare(root.app.player.current.title, "Sun Stream");
+            tryVerify(function() { return root.app.player.playing; }, 5000);
+            // An album's menu: its tracks fetched, then the usual choices.
+            root.app.albumMenu(artist.albums[1]);
+            tryVerify(function() { return root.app.sheet.choices.length > 0; }, 3000);
+            var labels = root.app.sheet.choices.map(function(c) { return c.label; });
+            verify(labels.indexOf("Play Next") >= 0, labels);
+            verify(labels.indexOf("Go to Artist") >= 0, labels);
+            var playNext = root.app.sheet.choices.filter(function(c) { return c.label === "Play Next"; })[0];
+            root.app.sheet.hide();
+            playNext.action();
+            tryVerify(function() { return root.app.player.queue.items.some(function(t) { return t.path === "subsonic:3"; }); });
+            root.app.player.stop();
+            root.app.player.clearQueue();
+            // The library, an artist and an album at every other size.
+            var netBand = lib.artists[0], deepBlue = lib.newest[0];
+            [[320, 480], [720, 720], [1024, 768], [768, 1024]].forEach(function(sz) {
+                root.app.pageStack.pop(null);
+                root.app.width = sz[0];
+                root.app.height = sz[1];
+                settle();
+                root.app.openStreamingService("subsonic");
+                settle();
+                tryCompare(root.app.pageStack.currentItem, "loading", false);
+                wait(200);
+                var al = findByName(root.app.pageStack.currentItem, "streamArtists");
+                tryVerify(function() { return Math.abs(al.contentY - al.originY) < 1; }, 2000);
+                screenshot("stream-library");
+                root.app.openServiceArtist(netBand);
+                settle();
+                tryCompare(root.app.pageStack.currentItem, "loading", false);
+                wait(200);
+                screenshot("stream-artist");
+                root.app.openAlbum(deepBlue);
+                settle();
+                tryCompare(root.app.pageStack.currentItem, "loading", false);
+                wait(200);
+                screenshot("stream-album");
+            });
+            root.app.width = 480;
+            root.app.height = 800;
+            // A page left before its reply came is left alone: an artist
+            // whose albums come after it was left fetches none of them.
+            root.app.pageStack.pop(null);
+            settle();
+            var heldArtist = null, albumAsks = 0;
+            root.app.streaming.transport = function(method, url, body, done) {
+                if (url.indexOf("/provider/subsonic/artist?") > 0)
+                    return (heldArtist = function() { fakeLibrary(method, url, body, done); });
+                if (url.indexOf("/provider/subsonic/album?") > 0)
+                    albumAsks++;
+                fakeLibrary(method, url, body, done);
+            };
+            root.app.openServiceArtist(netBand);
+            settle();
+            tryVerify(function() { return heldArtist !== null; });
+            root.app.pageStack.pop(null);
+            settle();
+            heldArtist();
+            wait(200);
+            compare(albumAsks, 0);
+            root.app.streaming.transport = function(method, url, body, done) { done(404, null); };
+            root.app.streaming.refresh();
+            tryVerify(function() { return root.app.streaming.provider("subsonic") === null; });
             lp.category = "albums";
         }
 
