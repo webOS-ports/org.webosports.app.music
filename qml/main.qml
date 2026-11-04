@@ -452,6 +452,15 @@ WebOSWindow {
     }
 
     function openTarget(target, params) {
+        // A web stream (a station, or its .pls/.m3u) plays through Internet
+        // Radio, named by the launch's title or its address.
+        var web = Streaming.webStreamPath(target);
+        if (web) {
+            params = params || {};
+            if (!params.title)
+                params.title = Streaming.webStreamTitle(target);
+            target = web;
+        }
         // A streamed track ("youtube:<id>", "tidal:<id>"...): played as it
         // is, with whatever title the launch carried.
         if (Streaming.isRemote(target) && !/^file:/.test(target)) {

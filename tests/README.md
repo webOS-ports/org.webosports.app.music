@@ -44,6 +44,11 @@ writing calls.
   poll sent before the last command is dropped, and a different play state
   needs two reports in a row - so a stray report neither undoes a pause nor
   activates the media session again.
+  A web address handed to the app (`{target: "http://..."}`) becomes a
+  stream of the Internet Radio service (`radio:u.<base64url>`), titled
+  after its last path part or its host (`test_web_stream_path`,
+  `test_web_stream_title`, `tst_ui` `test_11_open_web_stream`); mutation-
+  checked 2026-11-04, 13 of 13 caught.
 - `tst_resume.qml`: Player playing on after the sound server went away,
   which the app sees only as the engine going to Stopped (here stopped
   behind Player's back): again from where it was, later and later, five

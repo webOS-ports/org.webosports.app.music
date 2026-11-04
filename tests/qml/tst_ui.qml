@@ -1159,6 +1159,34 @@ Item {
             compare(root.app.lastNotification, "Cannot find file.mp3.");
         }
 
+        // A web stream handed to the app (Atlas, Files, Email: Music is the
+        // system default for audio) plays through Internet Radio, which
+        // resolves it - a station's .pls or .m3u to its stream.
+        function test_11_open_web_stream() {
+            var resolved = [];
+            root.app.streaming.transport = function(method, url, body, done) {
+                var path = url.replace(root.app.streaming.baseUrl, "");
+                if (path === "/provider/radio/resolve") {
+                    resolved.push(body.trackId);
+                    return done(200, { url: "http://icecast.example/radio1-bb-mp3" });
+                }
+                done(404, { error: "no" });
+            };
+            root.app.openTarget("http://icecast.example/radio1-bb-mp3");
+            compare(root.app.player.current.path, "radio:u.aHR0cDovL2ljZWNhc3QuZXhhbXBsZS9yYWRpbzEtYmItbXAz");
+            compare(root.app.player.current.title, "radio1-bb-mp3");
+            compare(root.app.player.current.album, "Internet Radio");
+            compare(root.app.player.current.duration, 0);
+            tryVerify(function() { return resolved.length > 0; }, 3000);
+            compare(resolved[0], "u.aHR0cDovL2ljZWNhc3QuZXhhbXBsZS9yYWRpbzEtYmItbXAz");
+            root.app.closeNowPlaying();
+            root.app.openTarget("https://s.example/live.pls", { title: "My Station" });
+            compare(root.app.player.current.title, "My Station");
+            compare(root.app.player.count, 1);
+            root.app.player.clearQueue();
+            root.app.closeNowPlaying();
+        }
+
         function test_12_launch_actions_and_exhibition() {
             root.app.player.playTracks(root.app.library.lib.songs.slice(0, 2), 0, false);
             root.app.launchParams = JSON.stringify({ action: "next" });

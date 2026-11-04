@@ -136,6 +136,38 @@ Item {
             verify(!Streaming.isRemote("/a.mp3"));
         }
 
+        // A web stream plays through Internet Radio: "radio:u." and the
+        // address as Go's base64.RawURLEncoding has it (radio.go decodes it).
+        function test_web_stream_path() {
+            compare(Streaming.webStreamPath("http://mine.example/1"), "radio:u.aHR0cDovL21pbmUuZXhhbXBsZS8x");
+            compare(Streaming.webStreamPath("http://a.example/ab"), "radio:u.aHR0cDovL2EuZXhhbXBsZS9hYg");
+            compare(Streaming.webStreamPath("http://a.example/abc"), "radio:u.aHR0cDovL2EuZXhhbXBsZS9hYmM");
+            compare(Streaming.webStreamPath("http://a.example/~~~?>>"), "radio:u.aHR0cDovL2EuZXhhbXBsZS9-fn4_Pj4");
+            compare(Streaming.webStreamPath("https://radio.example/caf\u00e9.mp3?a=1"),
+                    "radio:u.aHR0cHM6Ly9yYWRpby5leGFtcGxlL2NhZsOpLm1wMz9hPTE");
+            compare(Streaming.webStreamPath("HTTPS://radio.example/x"), "radio:u." + "SFRUUFM6Ly9yYWRpby5leGFtcGxlL3g");
+            compare(Streaming.webStreamPath("/media/internal/a.mp3"), null);
+            compare(Streaming.webStreamPath("file:///a.mp3"), null);
+            compare(Streaming.webStreamPath("youtube:abc"), null);
+            compare(Streaming.webStreamPath("ftp://a.example/x.mp3"), null);
+            compare(Streaming.webStreamPath("http://"), null);
+            compare(Streaming.webStreamPath("http://a.example/a b.mp3"), null);
+            compare(Streaming.webStreamPath(undefined), null);
+            var p = Streaming.webStreamPath("http://mine.example/1");
+            compare(Streaming.split(p), { provider: "radio", id: "u.aHR0cDovL21pbmUuZXhhbXBsZS8x" });
+            compare(Streaming.displayName("radio"), "Internet Radio");
+        }
+
+        function test_web_stream_title() {
+            compare(Streaming.webStreamTitle("http://icecast.omroep.nl/radio1-bb-mp3"), "radio1-bb-mp3");
+            compare(Streaming.webStreamTitle("https://s.example/live/caf%C3%A9.pls?x=1#y"), "caf\u00e9.pls");
+            compare(Streaming.webStreamTitle("https://s.example/"), "s.example");
+            compare(Streaming.webStreamTitle("https://s.example/stations/radio1/"), "radio1");
+            compare(Streaming.webStreamTitle("https://s.example:8000"), "s.example:8000");
+            compare(Streaming.webStreamTitle("https://s.example/a%ZZ"), "a%ZZ");
+            compare(Streaming.webStreamTitle("not a link"), "");
+        }
+
         function test_track() {
             var t = Streaming.track({ id: "42", provider: "tidal", title: "T", artist: "A", album: "",
                                       thumbnail: "https://img/1.jpg", duration_ms: 123000, path: "tidal:42" }, "Tidal");

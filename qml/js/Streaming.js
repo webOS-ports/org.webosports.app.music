@@ -35,7 +35,8 @@ var noAccount = ["youtube"];
 
 var _names = {
     youtube: "YouTube", spotify: "Spotify", tidal: "Tidal", deezer: "Deezer", qobuz: "Qobuz",
-    apple: "Apple Music", soundcloud: "SoundCloud", jamendo: "Jamendo", archive: "Internet Archive"
+    apple: "Apple Music", soundcloud: "SoundCloud", jamendo: "Jamendo", archive: "Internet Archive",
+    radio: "Internet Radio"
 };
 
 function displayName(id) {
@@ -49,6 +50,59 @@ function split(path) {
     if (!m || m[1] === "file")
         return null;
     return { provider: m[1], id: m[2] };
+}
+
+/*
+ * A web address a launch hands the app - a station's stream, or its .pls
+ * or .m3u - as the path it plays by: the music streaming service's Internet
+ * Radio plays "radio:u.<the address, base64url>", opening a station's
+ * playlist file for its stream (radio.go). null for anything else.
+ */
+function webStreamPath(target) {
+    var url = String(target === undefined || target === null ? "" : target);
+    if (!/^https?:\/\/[^\s\/?#]+[^\s]*$/i.test(url))
+        return null;
+    return "radio:u." + _base64url(_utf8(url));
+}
+
+/* What a web stream is called when the launch gave no title: the last part
+ * of its path, else its host. */
+function webStreamTitle(url) {
+    var m = /^[a-z]+:\/\/([^\/?#]+)([^?#]*)/i.exec(String(url || ""));
+    if (!m)
+        return "";
+    var parts = m[2].split("/").filter(function(p) { return p !== ""; });
+    var name = parts.length ? parts[parts.length - 1] : "";
+    try {
+        name = decodeURIComponent(name);
+    } catch (e) {
+        // Not percent-encoded after all.
+    }
+    return name || m[1];
+}
+
+function _utf8(s) {
+    var bytes = [];
+    var e = unescape(encodeURIComponent(s));
+    for (var i = 0; i < e.length; i++)
+        bytes.push(e.charCodeAt(i));
+    return bytes;
+}
+
+var _b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+// base64url without padding, as Go's base64.RawURLEncoding.
+function _base64url(bytes) {
+    var out = "";
+    for (var i = 0; i < bytes.length; i += 3) {
+        var n = (bytes[i] << 16) | ((bytes[i + 1] || 0) << 8) | (bytes[i + 2] || 0);
+        out += _b64.charAt((n >> 18) & 63) + _b64.charAt((n >> 12) & 63);
+        if (i + 1 < bytes.length)
+            out += _b64.charAt((n >> 6) & 63);
+        if (i + 2 < bytes.length)
+            out += _b64.charAt(n & 63);
+    }
+    return out;
 }
 
 function isRemote(path) {
