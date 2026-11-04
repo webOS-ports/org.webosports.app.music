@@ -708,10 +708,11 @@ WebOSWindow {
     }
 
     // A playlist's name, and the question before deleting one: asked
-    // with ask(), which runs the answer.
+    // with ask(), which runs the answer. The prompt sizes itself to the
+    // part of the window above the keyboard: anchoring it to fill the
+    // window would undo that and centre it behind the keyboard.
     LC.PromptDialog {
         id: prompt
-        anchors.fill: parent
         visible: false
         z: 1001
     }
