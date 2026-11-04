@@ -859,6 +859,19 @@ Item {
             compare(prompt.title, "New Playlist");
             compare(prompt.text, "Playlist");
             screenshot("playlist-new");
+            // With the on-screen keyboard up (the lower 45% of a phone's
+            // screen), the field and both buttons stay above it.
+            var kb = Math.round(root.app.contentItem.height * 0.45);
+            prompt.keyboardHeightForTest = kb;
+            wait(20);
+            var kbTop = root.app.contentItem.height - kb;
+            ["promptField", "promptAcceptButton", "promptRejectButton"].forEach(function(name) {
+                var it = findByName(root.app.contentItem, name);
+                var bottom = it.mapToItem(root.app.contentItem, 0, it.height).y;
+                verify(bottom <= kbTop, name + " ends at " + bottom + ", the keyboard starts at " + kbTop);
+            });
+            screenshot("playlist-new-keyboard");
+            prompt.keyboardHeightForTest = -1;
             tapButton("promptRejectButton");
             verify(!prompt.opened);
 
