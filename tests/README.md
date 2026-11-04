@@ -49,6 +49,9 @@ writing calls.
   after its last path part or its host (`test_web_stream_path`,
   `test_web_stream_title`, `tst_ui` `test_11_open_web_stream`); mutation-
   checked 2026-11-04, 13 of 13 caught.
+  A Jellyfin, Emby or Plex server signed in in Videos counts as signed in
+  here (`test_signed_in_through_videos`), only those three and only through
+  their own kind of account; mutation-checked 2026-11-04.
 - `tst_resume.qml`: Player playing on after the sound server went away,
   which the app sees only as the engine going to Stopped (here stopped
   behind Player's back): again from where it was, later and later, five

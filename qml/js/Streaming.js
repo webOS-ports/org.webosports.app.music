@@ -33,6 +33,11 @@ var accountTemplatePrefix = "org.webosports.app.music.";
 // Services that need no account in Accounts.
 var noAccount = ["youtube"];
 
+// Services signed in in Videos: their account there brings the server's
+// music too (org.webosports.video.<id>).
+var videoAccountPrefix = "org.webosports.video.";
+var videoAccount = ["jellyfin", "emby", "plex"];
+
 var _names = {
     youtube: "YouTube", spotify: "Spotify", tidal: "Tidal", deezer: "Deezer", qobuz: "Qobuz",
     apple: "Apple Music", soundcloud: "SoundCloud", jamendo: "Jamendo", archive: "Internet Archive",
@@ -165,8 +170,9 @@ function formats(reply) {
 
 /*
  * The services to offer: those the daemon has whose account is in
- * Accounts, plus the ones that need none. accountTemplateIds null (Accounts
- * could not be asked) trusts the daemon's list. By name.
+ * Accounts (Music's own, or for a media server Videos'), plus the ones
+ * that need none. accountTemplateIds null (Accounts could not be asked)
+ * trusts the daemon's list. By name.
  */
 function signedIn(daemonProviders, accountTemplateIds) {
     var out = (daemonProviders || []).filter(function(p) {
@@ -174,7 +180,9 @@ function signedIn(daemonProviders, accountTemplateIds) {
             return false;
         if (noAccount.indexOf(p.id) >= 0 || accountTemplateIds === null || accountTemplateIds === undefined)
             return true;
-        return accountTemplateIds.indexOf(accountTemplatePrefix + p.id) >= 0;
+        if (accountTemplateIds.indexOf(accountTemplatePrefix + p.id) >= 0)
+            return true;
+        return videoAccount.indexOf(p.id) >= 0 && accountTemplateIds.indexOf(videoAccountPrefix + p.id) >= 0;
     }).map(function(p) { return { id: p.id, name: p.name || displayName(p.id), browse: p.browse === true }; });
     out.sort(function(a, b) { return a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1; });
     return out;

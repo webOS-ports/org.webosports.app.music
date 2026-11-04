@@ -203,6 +203,17 @@ Item {
             compare(Streaming.signedIn(null, accounts).length, 0);
         }
 
+        // A media server signed in in Videos is signed in here too; only
+        // those three, and only with their own kind of account.
+        function test_signed_in_through_videos() {
+            var daemon = [{ id: "jellyfin" }, { id: "emby" }, { id: "plex", name: "Plex" }, { id: "tidal" }, { id: "subsonic" }];
+            var accounts = ["org.webosports.video.jellyfin", "org.webosports.video.plex", "org.webosports.video.tidal",
+                            "org.webosports.video.subsonic", "org.webosports.app.music.emby"];
+            compare(Streaming.signedIn(daemon, accounts).map(function(p) { return p.id + "=" + p.name; }),
+                    ["emby=Emby", "jellyfin=Jellyfin", "plex=Plex"]);
+            compare(Streaming.signedIn(daemon, ["org.webosports.video.emby"]).map(function(p) { return p.id; }), ["emby"]);
+        }
+
         // A Subsonic song says where it sits on its album; one that says
         // nothing, or nonsense, sits nowhere.
         function test_track_place() {
