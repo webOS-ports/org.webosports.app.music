@@ -177,6 +177,29 @@ Item {
         });
     }
 
+    /* A service's library (a provider with "browse"): done(list, error).
+     * what: "artists", "artist" (id: its albums), "album" (id: its tracks)
+     * or "albums" (id: the list, "newest" and so on). */
+    function browse(providerId, what, id, done) {
+        var url = baseUrl + "/provider/" + encodeURIComponent(providerId) + "/" + what;
+        if (what === "albums")
+            url += "?list=" + encodeURIComponent(id || "newest");
+        else if (what !== "artists")
+            url += "?id=" + encodeURIComponent(id);
+        var key = what === "artists" ? "artists" : what === "album" ? "tracks" : "albums";
+        var name = providerName(providerId);
+        transport("GET", url, null, function(code, data) {
+            if (code !== 200 || !data || !Array.isArray(data[key])) {
+                done([], (data && data.error) ? data.error : "The service did not answer.");
+                return;
+            }
+            done(data[key].filter(function(x) { return x && x.id; }).map(function(x) {
+                return key === "tracks" ? Streaming.track(x, name) : key === "artists" ? Streaming.artist(x)
+                                                                                      : Streaming.album(x, name);
+            }), "");
+        });
+    }
+
     function provider(id) {
         for (var i = 0; i < providers.length; i++) {
             if (providers[i].id === id)

@@ -71,8 +71,9 @@ function track(t, providerName) {
         albumArtist: "",
         genre: "",
         duration: t.duration_ms > 0 ? t.duration_ms : 0,
-        track: 0,
-        disc: 0,
+        // Its place on its album, from a service that says (Subsonic).
+        track: t.track > 0 ? t.track : 0,
+        disc: t.disc > 0 ? t.disc : 0,
         year: 0,
         artUrl: t.thumbnail || "",
         provider: provider,
@@ -120,7 +121,7 @@ function signedIn(daemonProviders, accountTemplateIds) {
         if (noAccount.indexOf(p.id) >= 0 || accountTemplateIds === null || accountTemplateIds === undefined)
             return true;
         return accountTemplateIds.indexOf(accountTemplatePrefix + p.id) >= 0;
-    }).map(function(p) { return { id: p.id, name: p.name || displayName(p.id) }; });
+    }).map(function(p) { return { id: p.id, name: p.name || displayName(p.id), browse: p.browse === true }; });
     out.sort(function(a, b) { return a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1; });
     return out;
 }
@@ -132,4 +133,48 @@ function stored(t) {
         return t ? t.path : "";
     return { path: t.path, title: t.title, artist: t.artist, album: t.album, duration: t.duration,
              artUrl: t.artUrl, provider: t.provider, remote: true };
+}
+
+/*
+ * A service with a library to browse (the daemon's "browse": a Subsonic
+ * server): its albums and artists as the app's, so the pages that show the
+ * library on the device show them too. Their tracks are fetched when one is
+ * opened: "tracks" starts empty, "trackCount" is what the service says.
+ */
+function album(a, providerName) {
+    return {
+        id: String(a.id || ""),
+        provider: String(a.provider || ""),
+        title: a.name || "",
+        artist: a.artist || providerName || "",
+        artistId: String(a.artist_id || ""),
+        year: a.year > 0 ? a.year : 0,
+        genre: "",
+        artUrl: a.thumbnail || "",
+        artPath: "",
+        tracks: [],
+        trackCount: a.tracks > 0 ? a.tracks : 0,
+        remote: true
+    };
+}
+
+function artist(a) {
+    return {
+        id: String(a.id || ""),
+        provider: String(a.provider || ""),
+        name: a.name || "",
+        albumCount: a.albums > 0 ? a.albums : 0,
+        artUrl: a.thumbnail || "",
+        remote: true
+    };
+}
+
+/* "2024 · 12 songs", what an album of a service says of itself. */
+function albumDetail(al) {
+    var parts = [];
+    if (al && al.year > 0)
+        parts.push(String(al.year));
+    if (al && al.trackCount > 0)
+        parts.push(al.trackCount + (al.trackCount === 1 ? " song" : " songs"));
+    return parts.join(" · ");
 }

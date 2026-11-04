@@ -35,6 +35,8 @@ Item {
     property string detail: ""
     property string artPath: ""
     property string artAlbum: ""
+    // A cover on the web (a streaming service's), else artPath's.
+    property string artUrl: ""
     property string icon: "album"
     property bool round: false
     property bool canPlay: true
@@ -63,6 +65,7 @@ Item {
         radius: header.round ? width / 2 : Math.max(3, width / 40)
         path: header.artPath
         album: header.artAlbum
+        artUrl: header.artUrl
         placeholderIcon: header.icon
     }
 

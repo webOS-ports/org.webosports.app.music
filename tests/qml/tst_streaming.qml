@@ -171,6 +171,58 @@ Item {
             compare(Streaming.signedIn(null, accounts).length, 0);
         }
 
+        // A Subsonic song says where it sits on its album; one that says
+        // nothing, or nonsense, sits nowhere.
+        function test_track_place() {
+            var t = Streaming.track({ id: "s1", provider: "subsonic", title: "T", track: 3, disc: 2 }, "Subsonic");
+            compare(t.track, 3);
+            compare(t.disc, 2);
+            var u = Streaming.track({ id: "s2", provider: "subsonic", title: "T", track: -1 }, "Subsonic");
+            compare(u.track, 0);
+            compare(u.disc, 0);
+        }
+
+        function test_signed_in_browse() {
+            var got = Streaming.signedIn([{ id: "subsonic", name: "Subsonic", browse: true },
+                                          { id: "jamendo", name: "Jamendo" },
+                                          { id: "tidal", name: "Tidal", browse: "yes" }], null);
+            compare(got.map(function(p) { return p.browse; }), [false, true, false]);
+        }
+
+        function test_album_and_artist() {
+            var al = Streaming.album({ id: 9, provider: "subsonic", name: "Blue", artist: "Joni",
+                                       artist_id: "ar1", year: 1971, thumbnail: "http://127.0.0.1:8730/subsonicart?id=c9",
+                                       tracks: 10 }, "Subsonic");
+            compare(al.id, "9");
+            compare(al.title, "Blue");
+            compare(al.artist, "Joni");
+            compare(al.artistId, "ar1");
+            compare(al.year, 1971);
+            compare(al.trackCount, 10);
+            compare(al.tracks, []);
+            compare(al.artUrl, "http://127.0.0.1:8730/subsonicart?id=c9");
+            verify(al.remote);
+            // No artist given: the service stands in, as for its tracks.
+            var bare = Streaming.album({ id: "x", provider: "subsonic" }, "Subsonic");
+            compare(bare.artist, "Subsonic");
+            compare(bare.year, 0);
+            compare(bare.trackCount, 0);
+            compare(bare.artistId, "");
+            var ar = Streaming.artist({ id: "ar1", provider: "subsonic", name: "Joni", albums: 4, thumbnail: "u" });
+            compare(ar.name, "Joni");
+            compare(ar.albumCount, 4);
+            compare(ar.artUrl, "u");
+            verify(ar.remote);
+            compare(Streaming.artist({ id: "y", albums: -2 }).albumCount, 0);
+        }
+
+        function test_album_detail() {
+            compare(Streaming.albumDetail({ year: 1971, trackCount: 10 }), "1971 · 10 songs");
+            compare(Streaming.albumDetail({ year: 0, trackCount: 1 }), "1 song");
+            compare(Streaming.albumDetail({ year: 2001, trackCount: 0 }), "2001");
+            compare(Streaming.albumDetail(null), "");
+        }
+
         function test_formats() {
             compare(Streaming.formats(null), null);
             compare(Streaming.formats({ url: "u" }), null);
@@ -264,6 +316,85 @@ Item {
 
         // The user's playlists on the services that have any, asked once per
         // refresh; a playlist's tracks become the app's tracks.
+        // A library to browse: each kind of page asks its own route, keeps
+        // only what has an id, and says why when the service would not.
+        function test_browse() {
+            root.answers["GET /providers"] = [200, { providers: [{ id: "subsonic", name: "Subsonic", browse: true }] }];
+            store.refresh();
+            tryVerify(function() { return store.provider("subsonic") !== null; });
+            verify(store.provider("subsonic").browse);
+            root.answers["GET /provider/subsonic/artists"] = [200, { artists: [
+                { id: "ar1", provider: "subsonic", name: "Joni", albums: 2 }, { name: "no id" }] }];
+            root.answers["GET /provider/subsonic/albums"] = [200, { albums: [
+                { id: "al1", provider: "subsonic", name: "Blue", artist: "Joni", artist_id: "ar1", tracks: 2 }] }];
+            root.answers["GET /provider/subsonic/artist"] = [200, { albums: [
+                { id: "al1", provider: "subsonic", name: "Blue" }, { id: "al2", provider: "subsonic", name: "Hejira" }] }];
+            root.answers["GET /provider/subsonic/album"] = [200, { tracks: [
+                { id: "s1", provider: "subsonic", title: "All I Want", artist: "Joni", album: "Blue", track: 1,
+                  duration_ms: 214000, path: "subsonic:s1" },
+                { provider: "subsonic", title: "no id" }] }];
+            var got = null;
+            function take(list, err) { got = { list: list, error: err }; }
+            function lastPath() { return root.calls[root.calls.length - 1].path; }
+
+            got = null;
+            store.browse("subsonic", "artists", "", take);
+            tryVerify(function() { return got !== null; });
+            compare(lastPath(), "/provider/subsonic/artists");
+            compare(got.error, "");
+            compare(got.list.length, 1);
+            compare(got.list[0].name, "Joni");
+            compare(got.list[0].albumCount, 2);
+
+            got = null;
+            store.browse("subsonic", "albums", "", take);
+            tryVerify(function() { return got !== null; });
+            compare(lastPath(), "/provider/subsonic/albums?list=newest");
+            compare(got.list[0].title, "Blue");
+            compare(got.list[0].artistId, "ar1");
+            got = null;
+            store.browse("subsonic", "albums", "random", take);
+            tryVerify(function() { return got !== null; });
+            compare(lastPath(), "/provider/subsonic/albums?list=random");
+
+            got = null;
+            store.browse("subsonic", "artist", "ar 1", take);
+            tryVerify(function() { return got !== null; });
+            compare(lastPath(), "/provider/subsonic/artist?id=ar%201");
+            compare(got.list.map(function(a) { return a.title; }), ["Blue", "Hejira"]);
+            // An album of an artist with no artist of its own: the service.
+            compare(got.list[0].artist, "Subsonic");
+
+            got = null;
+            store.browse("subsonic", "album", "al1", take);
+            tryVerify(function() { return got !== null; });
+            compare(lastPath(), "/provider/subsonic/album?id=al1");
+            compare(got.list.length, 1);
+            compare(got.list[0].path, "subsonic:s1");
+            compare(got.list[0].track, 1);
+            compare(got.list[0].duration, 214000);
+            verify(got.list[0].remote);
+
+            // Refused, and not answered at all.
+            root.answers["GET /provider/subsonic/artists"] = [409, { error: "subsonic has no library to browse" }];
+            got = null;
+            store.browse("subsonic", "artists", "", take);
+            tryVerify(function() { return got !== null; });
+            compare(got.list, []);
+            compare(got.error, "subsonic has no library to browse");
+            root.answers["GET /provider/subsonic/album"] = [200, { albums: [] }];
+            got = null;
+            store.browse("subsonic", "album", "al1", take);
+            tryVerify(function() { return got !== null; });
+            compare(got.list, []);
+            compare(got.error, "The service did not answer.");
+            delete root.answers["GET /provider/subsonic/artist"];
+            got = null;
+            store.browse("subsonic", "artist", "ar1", take);
+            tryVerify(function() { return got !== null; });
+            compare(got.error, "not here");
+        }
+
         function test_service_playlists() {
             root.answers["GET /providers"] = [200, { providers: [{ id: "spotify", name: "Spotify" }, { id: "jamendo", name: "Jamendo" }] }];
             root.answers["GET /provider/spotify/playlists"] = [200, { playlists: [

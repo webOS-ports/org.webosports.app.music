@@ -41,6 +41,7 @@ Item {
         height: width
         path: tile.album ? tile.album.artPath : ""
         album: tile.album ? tile.album.title : ""
+        artUrl: tile.album && tile.album.artUrl ? tile.album.artUrl : ""
         border.width: tile.playing ? Units.gu(0.3) : 0
         border.color: tile.theme.accentOnLight
     }

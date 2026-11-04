@@ -53,6 +53,15 @@ writing calls.
 - `tst_ui.qml` `test_18_streaming`: the Streaming category, a service's
   search, playing a result, its menu, a playlist with a streamed track, and
   the per-service section in Search.
+- `tst_ui.qml` `test_18_streaming_library`: a service with a library to
+  browse (Subsonic): it opens on its newest albums and artists, an
+  artist's albums and their songs, an album's numbered tracks, playing
+  one, an album's menu (Play Next, Go to Artist), pages that stay at their
+  top while their albums arrive, a reply to a page already left ignored,
+  and the three pages at every size. `tst_streaming.qml` covers the albums
+  and artists as the app's (`Streaming.album`, `artist`, `albumDetail`, a
+  track's place on its album) and `StreamingStore.browse`'s routes,
+  filtering and errors.
 
 - `tst_ui.qml` also covers: a song the indexer lists whose file is gone
   (left out), the queue's header at 320 px (short labels, the summary on a
