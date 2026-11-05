@@ -108,7 +108,8 @@ screenshots were taken with.
     tools/screenshots-host.sh <host build dir> [luneos-components] [profile...]
 
 Every screen at a device's screen size and grid unit (the stand-ins'
-`--profile`: mindphone, q25, tp, n7), one contact sheet per device in
+`--profile`: by default mindphone, q25, tp, n7 and radon, 720x1600 with a
+notch and rounded corners), one contact sheet per device in
 `build/test-output/screens`. qmltestrunner cannot pass the profile through,
 hence the small runner `screens/main.cpp`.
 
