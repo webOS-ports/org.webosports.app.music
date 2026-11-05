@@ -474,15 +474,41 @@ Item {
             compare(page.detail, "3 stations");
             verify(!more.visible);
             compare(page.moreLabel, "");
-            // Favourited from its menu, as a station is.
+            // A station favourited is in Favorite Stations, a streamed song
+            // in Favorites; Favorite Stations only shows with one in it.
             var before = root.app.smartTracks("favorites").length;
-            root.app.stats.setFavorite(page.songs[1].path, true, Streaming.stored(page.songs[1]));
+            var hasStations = function() { return view.rows.some(function(r) { return r.id === "favoriteStations"; }); };
+            verify(!hasStations());
+            var station = page.songs[1];
+            root.app.stats.setFavorite(station.path, true, Streaming.stored(station));
+            var tidal = { path: "tidal:fav-ui", title: "Streamed", artist: "A", album: "B", duration: 1000, artUrl: "",
+                          provider: "tidal", remote: true };
+            root.app.stats.setFavorite(tidal.path, true, tidal);
+            var stations = root.app.smartTracks("favoriteStations");
+            compare(stations.map(function(t) { return t.title; }), ["Jazz 24"]);
+            verify(stations[0].remote);
             var favs = root.app.smartTracks("favorites");
             compare(favs.length, before + 1);
-            compare(favs[favs.length - 1].title, "Jazz 24");
-            verify(favs[favs.length - 1].remote);
-            root.app.stats.setFavorite(page.songs[1].path, false);
+            compare(favs[favs.length - 1].title, "Streamed");
+            tryVerify(hasStations);
+            var at = -1;
+            for (var k = 0; k < view.rows.length; k++)
+                if (view.rows[k].id === "favoriteStations")
+                    at = k;
+            list.positionViewAtIndex(at, ListView.Contain);
+            tryVerify(function() { return list.itemAtIndex(at) !== null && list.itemAtIndex(at).item !== null; });
+            compare(list.itemAtIndex(at).item.title, "Favorite Stations");
+            compare(list.itemAtIndex(at).item.subtitle, "1 station");
+            root.app.pageStack.pop(null);
+            root.app.openSmartPlaylist("favoriteStations");
+            settle();
+            compare(root.app.pageStack.currentItem.detail, "1 station");
+            compare(root.app.pageStack.currentItem.songs.length, 1);
+            root.app.stats.setFavorite(station.path, false);
+            root.app.stats.setFavorite(tidal.path, false);
             compare(root.app.smartTracks("favorites").length, before);
+            compare(root.app.smartTracks("favoriteStations").length, 0);
+            tryVerify(function() { return !hasStations(); });
             root.app.pageStack.pop(null);
             root.app.streaming.transport = function(method, url, body, done) { done(404, null); };
             root.app.streaming.refresh();

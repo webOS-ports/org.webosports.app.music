@@ -434,6 +434,8 @@ function search(lib, text, limit) {
  */
 var smartPlaylists = [
     { id: "favorites", name: "Favorites" },
+    // Favourite radio stations (the music service's), shown once there are.
+    { id: "favoriteStations", name: "Favorite Stations", stations: true },
     { id: "recentlyAdded", name: "Recently Added" },
     { id: "recentlyPlayed", name: "Recently Played" },
     { id: "mostPlayed", name: "Most Played" },

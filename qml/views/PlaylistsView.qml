@@ -38,8 +38,10 @@ Item {
         appWindow.library.revision;
         var out = [{ kind: "new" }, { kind: "header", name: "AUTOMATIC" }];
         Library.smartPlaylists.forEach(function(s) {
-            out.push({ kind: "smart", id: s.id, name: s.name,
-                       count: appWindow.smartTracks(s.id).length });
+            var count = appWindow.smartTracks(s.id).length;
+            if (s.stations && count === 0)
+                return;
+            out.push({ kind: "smart", id: s.id, name: s.name, count: count, stations: s.stations === true });
         });
         if (playlists.playlists.length > 0)
             out.push({ kind: "header", name: "YOUR PLAYLISTS" });
@@ -105,9 +107,10 @@ Item {
             title: modelData.kind === "new" ? "New Playlist" : modelData.name
             subtitle: modelData.kind === "new" ? ""
                       : modelData.kind === "service" ? Streaming.playlistDetail(modelData.provider, modelData.count, modelData.owner)
+                      : modelData.stations ? Streaming.countOf("radio", modelData.count)
                       : Library.plural(modelData.count, "song", "songs")
             icon: modelData.kind === "new" ? "playlist-add"
-                  : (modelData.id === "favorites" ? "heart" : "playlist")
+                  : (modelData.id === "favorites" || modelData.id === "favoriteStations" ? "heart" : "playlist")
             artPath: modelData.kind === "user" ? modelData.artPath : ""
             artAlbum: modelData.kind === "user" && modelData.artPath ? appWindow.library.trackFor(modelData.artPath).album : ""
             artUrl: modelData.kind === "user" || modelData.kind === "service" ? (modelData.artUrl || "") : ""

@@ -888,18 +888,25 @@ WebOSWindow {
     }
 
     function smartTracks(id) {
+        var isStation = function(t) { return t.provider === "radio"; };
+        if (id === "favoriteStations")
+            return stats.streamedFavorites().filter(isStation);
         var list = Library.smartPlaylist(id, library.lib.songs, stats.asMap(), Date.now(), 100);
-        // Favourite stations and streamed songs, after the library's.
-        return id === "favorites" ? list.concat(stats.streamedFavorites()) : list;
+        // Favourite streamed songs, after the library's.
+        return id === "favorites" ? list.concat(stats.streamedFavorites().filter(function(t) { return !isStation(t); })) : list;
     }
 
     function openSmartPlaylist(id) {
         var info = Library.smartPlaylists.filter(function(s) { return s.id === id; })[0];
-        var page = push("pages/TrackListPage.qml", {
+        var songs = smartTracks(id);
+        var props = {
             title: info ? info.name : id,
-            songs: smartTracks(id),
-            icon: id === "favorites" ? "heart" : "playlist"
-        });
+            songs: songs,
+            icon: id === "favorites" || id === "favoriteStations" ? "heart" : "playlist"
+        };
+        if (info && info.stations)
+            props.detail = Streaming.countOf("radio", songs.length);
+        var page = push("pages/TrackListPage.qml", props);
         page.objectName = "smartPlaylistPage";
     }
 
