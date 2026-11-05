@@ -18,7 +18,9 @@ writing calls.
   sounds and the indexer's "Unknown ..." stand-ins left out, sorting,
   search, the automatic playlists, formatting, LRC parsing.
 - `tst_ui.qml`: the app itself against `fixtures/music` as the indexer would
-  have stored it: library, covers (embedded, folder.jpg above a disc folder,
+  have stored it: Home (what was left playing, the last played, favourite
+  stations and songs, playlists), the Radio tab (search, favourite stations,
+  station lists; none of it under Playlists), library, covers (embedded, folder.jpg above a disc folder,
   none), every category, album page and playback, Now Playing (ReplayGain in
   every mode, lyrics, shuffle/repeat, favourite, cover tap regions), menus,
   queue, playlists (Rename, Delete and New Playlist through their
@@ -35,7 +37,10 @@ writing calls.
   retried, the session ended with the app.
 - `tst_streaming.qml`: `qml/js/Streaming.js` (paths, track objects, which
   services count as signed in, what a playlist keeps, the queue keeping
-  them), StreamingStore against a fake music streaming service (no daemon,
+  them), what listAccounts answered and the icon each service takes from
+  its account, favourite streamed tracks kept (also across a restart), how
+  a service playlist counts (stations for radio), StreamingStore against a
+  fake music streaming service (no daemon,
   providers, search, errors, resolve), Player resolving streamed tracks (to
   the fixture files), skipping one that does not resolve, and handing
   Spotify to SpotifyEngine and back, and SpotifyEngine's Connect calls and
@@ -44,6 +49,14 @@ writing calls.
   poll sent before the last command is dropped, and a different play state
   needs two reports in a row - so a stray report neither undoes a pause nor
   activates the media session again.
+  A web address handed to the app (`{target: "http://..."}`) becomes a
+  stream of the Internet Radio service (`radio:u.<base64url>`), titled
+  after its last path part or its host (`test_web_stream_path`,
+  `test_web_stream_title`, `tst_ui` `test_11_open_web_stream`); mutation-
+  checked 2026-11-04, 13 of 13 caught.
+  A Jellyfin, Emby or Plex server signed in in Videos counts as signed in
+  here (`test_signed_in_through_videos`), only those three and only through
+  their own kind of account; mutation-checked 2026-11-04.
 - `tst_resume.qml`: Player playing on after the sound server went away,
   which the app sees only as the engine going to Stopped (here stopped
   behind Player's back): again from where it was, later and later, five

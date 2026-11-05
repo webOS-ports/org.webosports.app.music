@@ -43,6 +43,7 @@ Item {
             title: modelData.name
             subtitle: modelData.browse ? "Artists, albums and search" : "Search " + modelData.name
             icon: "stream"
+            iconUrl: modelData.icon || ""
             onClicked: appWindow.openStreamingService(modelData.id)
         }
     }

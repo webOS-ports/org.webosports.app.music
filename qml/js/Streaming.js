@@ -33,9 +33,15 @@ var accountTemplatePrefix = "org.webosports.app.music.";
 // Services that need no account in Accounts.
 var noAccount = ["youtube"];
 
+// Services signed in in Videos: their account there brings the server's
+// music too (org.webosports.video.<id>).
+var videoAccountPrefix = "org.webosports.video.";
+var videoAccount = ["jellyfin", "emby", "plex"];
+
 var _names = {
     youtube: "YouTube", spotify: "Spotify", tidal: "Tidal", deezer: "Deezer", qobuz: "Qobuz",
-    apple: "Apple Music", soundcloud: "SoundCloud", jamendo: "Jamendo", archive: "Internet Archive"
+    apple: "Apple Music", soundcloud: "SoundCloud", jamendo: "Jamendo", archive: "Internet Archive",
+    radio: "Internet Radio"
 };
 
 function displayName(id) {
@@ -49,6 +55,59 @@ function split(path) {
     if (!m || m[1] === "file")
         return null;
     return { provider: m[1], id: m[2] };
+}
+
+/*
+ * A web address a launch hands the app - a station's stream, or its .pls
+ * or .m3u - as the path it plays by: the music streaming service's Internet
+ * Radio plays "radio:u.<the address, base64url>", opening a station's
+ * playlist file for its stream (radio.go). null for anything else.
+ */
+function webStreamPath(target) {
+    var url = String(target === undefined || target === null ? "" : target);
+    if (!/^https?:\/\/[^\s\/?#]+[^\s]*$/i.test(url))
+        return null;
+    return "radio:u." + _base64url(_utf8(url));
+}
+
+/* What a web stream is called when the launch gave no title: the last part
+ * of its path, else its host. */
+function webStreamTitle(url) {
+    var m = /^[a-z]+:\/\/([^\/?#]+)([^?#]*)/i.exec(String(url || ""));
+    if (!m)
+        return "";
+    var parts = m[2].split("/").filter(function(p) { return p !== ""; });
+    var name = parts.length ? parts[parts.length - 1] : "";
+    try {
+        name = decodeURIComponent(name);
+    } catch (e) {
+        // Not percent-encoded after all.
+    }
+    return name || m[1];
+}
+
+function _utf8(s) {
+    var bytes = [];
+    var e = unescape(encodeURIComponent(s));
+    for (var i = 0; i < e.length; i++)
+        bytes.push(e.charCodeAt(i));
+    return bytes;
+}
+
+var _b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+// base64url without padding, as Go's base64.RawURLEncoding.
+function _base64url(bytes) {
+    var out = "";
+    for (var i = 0; i < bytes.length; i += 3) {
+        var n = (bytes[i] << 16) | ((bytes[i + 1] || 0) << 8) | (bytes[i + 2] || 0);
+        out += _b64.charAt((n >> 18) & 63) + _b64.charAt((n >> 12) & 63);
+        if (i + 1 < bytes.length)
+            out += _b64.charAt((n >> 6) & 63);
+        if (i + 2 < bytes.length)
+            out += _b64.charAt(n & 63);
+    }
+    return out;
 }
 
 function isRemote(path) {
@@ -111,19 +170,53 @@ function formats(reply) {
 
 /*
  * The services to offer: those the daemon has whose account is in
- * Accounts, plus the ones that need none. accountTemplateIds null (Accounts
- * could not be asked) trusts the daemon's list. By name.
+ * Accounts (Music's own, or for a media server Videos'), plus the ones
+ * that need none. accountTemplateIds null (Accounts could not be asked)
+ * trusts the daemon's list. By name.
+ *
+ * icons, { templateId: the account's icon file }, gives each service the
+ * icon of its account ("" for one without, as YouTube).
  */
-function signedIn(daemonProviders, accountTemplateIds) {
+function signedIn(daemonProviders, accountTemplateIds, icons) {
     var out = (daemonProviders || []).filter(function(p) {
         if (!p || !p.id)
             return false;
         if (noAccount.indexOf(p.id) >= 0 || accountTemplateIds === null || accountTemplateIds === undefined)
             return true;
-        return accountTemplateIds.indexOf(accountTemplatePrefix + p.id) >= 0;
-    }).map(function(p) { return { id: p.id, name: p.name || displayName(p.id), browse: p.browse === true }; });
+        if (accountTemplateIds.indexOf(accountTemplatePrefix + p.id) >= 0)
+            return true;
+        return videoAccount.indexOf(p.id) >= 0 && accountTemplateIds.indexOf(videoAccountPrefix + p.id) >= 0;
+    }).map(function(p) {
+        return { id: p.id, name: p.name || displayName(p.id), browse: p.browse === true, icon: _iconOf(p.id, icons) };
+    });
     out.sort(function(a, b) { return a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1; });
     return out;
+}
+
+/*
+ * What listAccounts answered, as { ids: [templateId], icons: { templateId:
+ * its icon file } } of the accounts not being deleted; null when it gave no
+ * list.
+ */
+function accountsFrom(reply) {
+    if (!reply || reply.returnValue === false || !Array.isArray(reply.results))
+        return null;
+    var live = reply.results.filter(function(a) { return a && !a.beingDeleted; });
+    var icons = {};
+    live.forEach(function(a) {
+        if (a.icon && typeof a.icon.loc_48x48 === "string" && !icons[a.templateId])
+            icons[a.templateId] = a.icon.loc_48x48;
+    });
+    return { ids: live.map(function(a) { return a.templateId; }), icons: icons };
+}
+
+function _iconOf(id, icons) {
+    if (!icons)
+        return "";
+    var file = icons[accountTemplatePrefix + id];
+    if (!file && videoAccount.indexOf(id) >= 0)
+        file = icons[videoAccountPrefix + id];
+    return typeof file === "string" && file.charAt(0) === "/" ? "file://" + file : "";
 }
 
 /* What a playlist keeps of a track: a file's path, or a streamed track's
@@ -167,6 +260,23 @@ function artist(a) {
         artUrl: a.thumbnail || "",
         remote: true
     };
+}
+
+/*
+ * What a service's playlist says under its name: how many it holds, as
+ * stations for radio; the one it is from when the service gives no count
+ * (Radio Browser's lists, read only when opened).
+ */
+function playlistDetail(providerId, count, owner) {
+    if (count > 0)
+        return countOf(providerId, count);
+    return owner || "";
+}
+
+/* "12 songs", or "12 stations" of radio. */
+function countOf(providerId, n) {
+    var radio = providerId === "radio";
+    return n + " " + (n === 1 ? (radio ? "station" : "song") : (radio ? "stations" : "songs"));
 }
 
 /* "2024 · 12 songs", what an album of a service says of itself. */

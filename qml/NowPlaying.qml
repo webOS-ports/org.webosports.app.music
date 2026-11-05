@@ -396,7 +396,7 @@ Rectangle {
                 image: np.favorite ? "heart" : "heart-outline"
                 label: np.favorite ? "Unfavorite" : "Favorite"
                 accent: np.theme.accent
-                onClicked: np.stats.setFavorite(np.track.path, !np.favorite)
+                onClicked: np.stats.setFavorite(np.track.path, !np.favorite, Streaming.stored(np.track))
             }
         }
 

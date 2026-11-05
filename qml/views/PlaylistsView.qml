@@ -20,6 +20,7 @@ import LunaNext.Common 0.1
 
 import "../components"
 import "../js/Library.js" as Library
+import "../js/Streaming.js" as Streaming
 
 /*
  * The automatic playlists (favourites, recently added, most played...)
@@ -37,8 +38,10 @@ Item {
         appWindow.library.revision;
         var out = [{ kind: "new" }, { kind: "header", name: "AUTOMATIC" }];
         Library.smartPlaylists.forEach(function(s) {
-            out.push({ kind: "smart", id: s.id, name: s.name,
-                       count: appWindow.smartTracks(s.id).length });
+            // Stations are in the Radio tab.
+            if (s.stations)
+                return;
+            out.push({ kind: "smart", id: s.id, name: s.name, count: appWindow.smartTracks(s.id).length });
         });
         if (playlists.playlists.length > 0)
             out.push({ kind: "header", name: "YOUR PLAYLISTS" });
@@ -50,7 +53,7 @@ Item {
                        artUrl: first && typeof first === "object" ? (first.artUrl || "") : "" });
         });
         // The user's playlists on their streaming services, as they are there.
-        appWindow.streaming.servicePlaylists.forEach(function(s) {
+        appWindow.streaming.servicePlaylists.filter(function(s) { return s.provider !== "radio"; }).forEach(function(s) {
             out.push({ kind: "header", name: s.name.toUpperCase() });
             s.playlists.forEach(function(p) {
                 out.push({ kind: "service", provider: s.provider, playlist: p, name: p.name,
@@ -102,7 +105,9 @@ Item {
             width: list.width
             theme: view.theme
             title: modelData.kind === "new" ? "New Playlist" : modelData.name
-            subtitle: modelData.kind === "new" ? "" : Library.plural(modelData.count, "song", "songs")
+            subtitle: modelData.kind === "new" ? ""
+                      : modelData.kind === "service" ? Streaming.playlistDetail(modelData.provider, modelData.count, modelData.owner)
+                      : Library.plural(modelData.count, "song", "songs")
             icon: modelData.kind === "new" ? "playlist-add"
                   : (modelData.id === "favorites" ? "heart" : "playlist")
             artPath: modelData.kind === "user" ? modelData.artPath : ""

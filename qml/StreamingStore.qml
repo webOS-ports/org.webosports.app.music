@@ -38,7 +38,7 @@ Item {
     property string baseUrl: "http://127.0.0.1:8730"
     property string clientName: "org.webosports.app.music"
 
-    // [{ id, name }] of the signed-in services, by name.
+    // [{ id, name, browse, icon }] of the signed-in services, by name.
     property var providers: []
     // "unknown", "ready" or "unavailable" (no daemon).
     property string status: "unknown"
@@ -62,6 +62,8 @@ Item {
     // The account template ids present, null until Accounts answered (or
     // when it cannot be asked: then every service the daemon has counts).
     property var _accountIds: null
+    // { templateId: icon file } of those accounts.
+    property var _accountIcons: ({})
     property var _daemonProviders: null
 
     function _xhr(method, url, body, done) {
@@ -115,12 +117,9 @@ Item {
             } catch (e) {
                 r = {};
             }
-            if (r.returnValue === false || !Array.isArray(r.results)) {
-                store._accountIds = null;
-            } else {
-                store._accountIds = r.results.filter(function(a) { return !a.beingDeleted; })
-                                             .map(function(a) { return a.templateId; });
-            }
+            var got = Streaming.accountsFrom(r);
+            store._accountIds = got ? got.ids : null;
+            store._accountIcons = got ? got.icons : {};
             store._update();
         }, function() {
             store._accountIds = null;
@@ -131,7 +130,7 @@ Item {
     function _update() {
         if (!_daemonProviders)
             return;
-        providers = Streaming.signedIn(_daemonProviders, _accountIds);
+        providers = Streaming.signedIn(_daemonProviders, _accountIds, _accountIcons);
         _loadPlaylists();
     }
 
@@ -165,15 +164,18 @@ Item {
         });
     }
 
-    /* done(tracks, error): a service playlist's tracks, as the app's tracks. */
-    function playlistTracks(providerId, playlistId, done) {
+    /* done(tracks, error, next): a service playlist's tracks, from offset
+     * (0 when left out); next is where the page after these starts, 0 when
+     * there is none. */
+    function playlistTracks(providerId, playlistId, done, offset) {
         transport("GET", baseUrl + "/provider/" + encodeURIComponent(providerId) + "/playlist?id="
-                  + encodeURIComponent(playlistId), null, function(code, data) {
+                  + encodeURIComponent(playlistId) + (offset > 0 ? "&offset=" + offset : ""), null, function(code, data) {
             if (code !== 200 || !data || !Array.isArray(data.tracks)) {
-                done([], (data && data.error) ? data.error : "The service did not answer.");
+                done([], (data && data.error) ? data.error : "The service did not answer.", 0);
                 return;
             }
-            done(data.tracks.map(function(t) { return Streaming.track(t, store.providerName(providerId)); }), "");
+            var next = data.more === true && data.next > (offset || 0) ? data.next : 0;
+            done(data.tracks.map(function(t) { return Streaming.track(t, store.providerName(providerId)); }), "", next);
         });
     }
 

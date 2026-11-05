@@ -90,16 +90,23 @@ WebOSWindow {
     property alias sheet: sheet
     readonly property alias pageStack: stack
 
-    // Streaming only while the streaming service runs and has a service
-    // signed in.
+    // Home, Radio and Streaming first, then the library on the phone; Albums
+    // starts that second group (groupStart), which the tabs and the rail set
+    // apart. Radio while Internet Radio is signed in; Streaming only while the
+    // streaming service runs and has a service signed in.
+    readonly property bool hasRadio: streaming.provider("radio") !== null
     readonly property var categories: [
-        { id: "albums", title: "Albums", icon: "album", view: "AlbumsView.qml" },
+        { id: "home", title: "Home", icon: "home", view: "HomeView.qml" }
+    ].concat(hasRadio ? [{ id: "radio", title: "Radio", icon: "stream", view: "RadioView.qml" }] : [])
+     .concat(streaming.available ? [{ id: "streaming", title: "Streaming", icon: "stream", view: "StreamingView.qml" }] : [])
+     .concat([
+        { id: "albums", title: "Albums", icon: "album", view: "AlbumsView.qml", groupStart: true },
         { id: "artists", title: "Artists", icon: "artist", view: "ArtistsView.qml" },
         { id: "songs", title: "Songs", icon: "songs", view: "SongsView.qml" },
         { id: "genres", title: "Genres", icon: "genre", view: "GenresView.qml" },
         { id: "playlists", title: "Playlists", icon: "playlist", view: "PlaylistsView.qml" },
         { id: "folders", title: "Folders", icon: "folder", view: "FoldersView.qml" }
-    ].concat(streaming.available ? [{ id: "streaming", title: "Streaming", icon: "stream", view: "StreamingView.qml" }] : [])
+    ])
 
     Theme {
         id: themeObject
@@ -452,6 +459,15 @@ WebOSWindow {
     }
 
     function openTarget(target, params) {
+        // A web stream (a station, or its .pls/.m3u) plays through Internet
+        // Radio, named by the launch's title or its address.
+        var web = Streaming.webStreamPath(target);
+        if (web) {
+            params = params || {};
+            if (!params.title)
+                params.title = Streaming.webStreamTitle(target);
+            target = web;
+        }
         // A streamed track ("youtube:<id>", "tidal:<id>"...): played as it
         // is, with whatever title the launch carried.
         if (Streaming.isRemote(target) && !/^file:/.test(target)) {
@@ -879,16 +895,32 @@ WebOSWindow {
     }
 
     function smartTracks(id) {
-        return Library.smartPlaylist(id, library.lib.songs, stats.asMap(), Date.now(), 100);
+        var isStation = function(t) { return t.provider === "radio"; };
+        if (id === "favoriteStations")
+            return stats.streamedFavorites().filter(isStation);
+        var list = Library.smartPlaylist(id, library.lib.songs, stats.asMap(), Date.now(), 100);
+        if (id === "recentlyPlayed") {
+            // The library's and the streamed tracks, the last played first.
+            var when = function(t) { var r = stats.get(t.path); return r ? r.lastPlayed || 0 : 0; };
+            var all = list.map(function(t) { return { track: t, lastPlayed: when(t) }; }).concat(stats.streamedPlayed());
+            all.sort(function(a, b) { return b.lastPlayed - a.lastPlayed; });
+            return all.slice(0, 100).map(function(x) { return x.track; });
+        }
+        // Favourite streamed songs, after the library's.
+        return id === "favorites" ? list.concat(stats.streamedFavorites().filter(function(t) { return !isStation(t); })) : list;
     }
 
     function openSmartPlaylist(id) {
         var info = Library.smartPlaylists.filter(function(s) { return s.id === id; })[0];
-        var page = push("pages/TrackListPage.qml", {
+        var songs = smartTracks(id);
+        var props = {
             title: info ? info.name : id,
-            songs: smartTracks(id),
-            icon: id === "favorites" ? "heart" : "playlist"
-        });
+            songs: songs,
+            icon: id === "favorites" || id === "favoriteStations" ? "heart" : "playlist"
+        };
+        if (info && info.stations)
+            props.detail = Streaming.countOf("radio", songs.length);
+        var page = push("pages/TrackListPage.qml", props);
         page.objectName = "smartPlaylistPage";
     }
 
@@ -928,12 +960,30 @@ WebOSWindow {
         });
         page.objectName = "servicePlaylistPage";
         page.loading = true;
-        streaming.playlistTracks(providerId, playlist.id, function(tracks, error) {
+        var next = 0;
+        var shown = function(tracks, error, nextPage) {
             page.loading = false;
-            page.songs = tracks;
+            page.loadingMore = false;
+            // A list read by page can shift between pages: a track already
+            // shown is not shown twice.
+            var seen = {};
+            page.songs.forEach(function(t) { seen[t.path] = true; });
+            page.songs = page.songs.concat(tracks.filter(function(t) { return !seen[t.path]; }));
+            if (!error)
+                next = nextPage;
+            page.moreLabel = next > 0 ? (providerId === "radio" ? "More stations" : "More") : "";
+            if (providerId === "radio")
+                page.detail = Streaming.countOf(providerId, page.songs.length);
             if (error)
                 notify(error);
+        };
+        page.moreRequested.connect(function() {
+            if (next <= 0)
+                return;
+            page.loadingMore = true;
+            streaming.playlistTracks(providerId, playlist.id, shown, next);
         });
+        streaming.playlistTracks(providerId, playlist.id, shown);
     }
 
     function openPlaylistFile(path) {
@@ -1158,7 +1208,7 @@ WebOSWindow {
         choices.push({ label: "Add to Playlist…", action: function() { appWindow.addToPlaylist([Streaming.stored(song)]); } });
         var fav = stats.isFavorite(song.path);
         choices.push({ label: fav ? "Remove from Favorites" : "Add to Favorites",
-                       action: function() { stats.setFavorite(song.path, !fav); } });
+                       action: function() { stats.setFavorite(song.path, !fav, Streaming.stored(song)); } });
         if (library.song(song.path)) {
             choices.push({ label: "Go to Album", action: function() { appWindow.openAlbumOf(song); } });
             choices.push({ label: "Go to Artist", action: function() { appWindow.openArtistOf(song); } });

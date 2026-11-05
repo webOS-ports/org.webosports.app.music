@@ -46,8 +46,6 @@ Settings {
     // The streaming format picked per service, as JSON: { "soundcloud": "AAC 96" }.
     property string streamFormats: "{}"
 
-    // Where the library was left.
-    property string lastCategory: "albums"
     property string albumSort: "title"
     property string songSort: "title"
 }

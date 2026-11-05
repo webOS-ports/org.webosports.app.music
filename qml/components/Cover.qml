@@ -34,6 +34,8 @@ Rectangle {
     // On the light library: a light square and a dark note.
     property bool onLight: true
     property string placeholderIcon: "note"
+    // How the art fills the square: cropped (a cover), or whole (an icon).
+    property int fillMode: Image.PreserveAspectCrop
     readonly property url placeholder: Qt.resolvedUrl((onLight ? "../images/dark/" : "../images/") + placeholderIcon + ".svg")
     readonly property bool hasArt: image.status === Image.Ready && image.implicitWidth > 1
     // A streamed cover shown large is asked for large (Art.sized); if the
@@ -64,7 +66,7 @@ Rectangle {
         onStatusChanged: if (status === Image.Error && cover._sizedUrl !== cover.artUrl) cover._sizedFailed = true
         sourceSize.width: Math.ceil(cover.width)
         sourceSize.height: Math.ceil(cover.height)
-        fillMode: Image.PreserveAspectCrop
+        fillMode: cover.fillMode
         asynchronous: true
         cache: true
         smooth: true

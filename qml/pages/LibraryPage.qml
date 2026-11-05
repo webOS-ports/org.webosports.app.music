@@ -21,8 +21,8 @@ import LunaNext.Common 0.1
 import "../components"
 
 /*
- * The library: Albums, Artists, Songs, Genres, Playlists and Folders. On a
- * phone a row of tabs picks one (swipe the content sideways to step
+ * The library: Home, Albums, Artists, Songs, Genres, Playlists and
+ * Folders. On a phone a row of tabs picks one (swipe the content sideways to step
  * through them); on a tablet the rail at the window's left does, and the
  * tabs are not shown.
  */
@@ -31,7 +31,8 @@ Item {
 
     property string title: "Music"
     readonly property var theme: appWindow.theme
-    property string category: appWindow.prefs.lastCategory
+    // Home first, to carry on where the user left off.
+    property string category: "home"
     property bool showTabs: !appWindow.wide
 
     readonly property var categories: appWindow.categories
@@ -43,11 +44,14 @@ Item {
         return 0;
     }
 
-    onCategoryChanged: appWindow.prefs.lastCategory = category
-
     // The view currently shown, for the back gesture (Folders steps out of
     // a folder before the app goes back).
-    readonly property var currentView: views.itemAt(currentIndex) ? views.itemAt(currentIndex).item : null
+    // Asked again as each view is made (itemAt alone is not watched).
+    readonly property var currentView: {
+        _viewsLoaded;
+        return views.itemAt(currentIndex) ? views.itemAt(currentIndex).item : null;
+    }
+    property int _viewsLoaded: 0
 
     ListView {
         id: tabs
@@ -66,11 +70,23 @@ Item {
         delegate: Item {
             required property var modelData
             required property int index
-            width: label.implicitWidth + Units.gu(3)
+            // A short upright line before the first tab of a group.
+            readonly property real gap: modelData.groupStart ? Units.gu(1.5) : 0
+            width: label.implicitWidth + Units.gu(3) + gap
             height: tabs.height
+            Rectangle {
+                objectName: "tabGroupDivider"
+                visible: parent.gap > 0
+                x: (parent.gap - width) / 2
+                anchors.verticalCenter: parent.verticalCenter
+                width: 1
+                height: parent.height * 0.45
+                color: page.theme.divider
+            }
             Text {
                 id: label
                 anchors.centerIn: parent
+                anchors.horizontalCenterOffset: parent.gap / 2
                 text: modelData.title
                 color: index === page.currentIndex ? page.theme.text : page.theme.secondaryText
                 font.pixelSize: page.theme.fontMedium
@@ -78,7 +94,7 @@ Item {
             }
             Rectangle {
                 anchors.bottom: parent.bottom
-                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.horizontalCenter: label.horizontalCenter
                 width: label.implicitWidth
                 height: Units.gu(0.35)
                 radius: height / 2
@@ -87,6 +103,7 @@ Item {
             }
             MouseArea {
                 anchors.fill: parent
+                anchors.leftMargin: parent.gap
                 onClicked: page.category = modelData.id
             }
         }
@@ -133,6 +150,7 @@ Item {
                 active: index === page.currentIndex || item !== null
                 visible: index === page.currentIndex
                 source: Qt.resolvedUrl("../views/" + modelData.view)
+                onLoaded: page._viewsLoaded++
             }
         }
     }

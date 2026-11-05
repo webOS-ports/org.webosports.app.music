@@ -18,6 +18,7 @@ import QtQuick
 import QtTest
 
 import LuneOS.Service 1.0
+import "../../qml/js/Streaming.js" as Streaming
 
 /*
  * The app itself, qml/main.qml, with luneos-components' desktop stand-ins
@@ -34,6 +35,8 @@ Item {
     property var app: null
     // The album lists the fake library was asked for.
     property var libraryLists: []
+    // The fake radio service fails its second page.
+    property bool radioPageFails: false
 
     LunaService {
         id: bus
@@ -403,6 +406,216 @@ Item {
             root.app.streaming.transport = function(method, url, body, done) { done(404, null); };
             root.app.streaming.refresh();
             tryVerify(function() { return root.app.streaming.servicePlaylists.length === 0; });
+            lp.category = "albums";
+        }
+
+        // Radio's lists say what they are from, or how many stations - not
+        // songs; a station favourited is in Favorites.
+        function test_18_radio_lists_and_favorites() {
+            root.app.streaming.transport = function(method, url, body, done) {
+                var path = url.replace(/^http:\/\/127\.0\.0\.1:8730/, "").replace(/\?.*$/, "");
+                if (path === "/providers")
+                    return done(200, { providers: [{ id: "radio", name: "Internet Radio" }] });
+                if (path === "/provider/radio/playlists")
+                    return done(200, { playlists: [{ id: "rb.tag.jazz", name: "Jazz", owner: "Radio Browser", thumbnail: "", tracks: 0 },
+                                                   { id: "l0", name: "Mine", owner: "mine.m3u", thumbnail: "", tracks: 2 }] });
+                var s3 = { id: "rb.s3", provider: "radio", title: "Jazz Radio", artist: "FR", album: "MP3", duration_ms: 0, path: "radio:rb.s3" };
+                var s2 = { id: "rb.s2", provider: "radio", title: "Jazz 24", artist: "US", album: "AAC", duration_ms: 0, path: "radio:rb.s2" };
+                if (path === "/provider/radio/playlist" && /[?&]offset=100(&|$)/.test(url))
+                    return root.radioPageFails ? done(502, { error: "Radio Browser did not answer." })
+                                               : done(200, { tracks: [s2, s3], more: false, next: 0 });
+                if (path === "/provider/radio/playlist" && /[?&]offset=/.test(url))
+                    return done(400, { error: "offset" });
+                if (path === "/provider/radio/playlist")
+                    return done(200, { tracks: [
+                        { id: "rb.s1", provider: "radio", title: "Jazz FM", artist: "UK", album: "MP3", duration_ms: 0, path: "radio:rb.s1" },
+                        s2], more: true, next: 100 });
+                done(404, { error: "no" });
+            };
+            root.app.streaming.refresh();
+            tryVerify(function() { return root.app.streaming.servicePlaylists.length === 1; });
+            // Radio has a tab of its own, after Home and before Streaming, and
+            // the library starts a group of its own; Playlists has none of it.
+            compare(root.app.categories.map(function(c) { return c.id; }).slice(0, 4), ["home", "radio", "streaming", "albums"]);
+            compare(root.app.categories.filter(function(c) { return c.groupStart; }).map(function(c) { return c.id; }), ["albums"]);
+            var dividers = function(item, name) {
+                var n = item.objectName === name && item.visible ? 1 : 0;
+                for (var i = 0; i < item.children.length; i++)
+                    n += dividers(item.children[i], name);
+                return n;
+            };
+            tryVerify(function() { return dividers(findByName(root.app, "categoryTabs"), "tabGroupDivider") === 1; });
+            var lp = root.app.pageStack.get(0);
+            lp.category = "playlists";
+            tryVerify(function() { return lp.currentView !== null && lp.currentView.rows !== undefined && findByName(lp.currentView, "playlistsList") !== null; });
+            verify(!lp.currentView.rows.some(function(r) { return r.provider === "radio" || r.id === "favoriteStations"; }));
+            lp.category = "radio";
+            tryVerify(function() { return lp.currentView !== null && findByName(lp.currentView, "radioList") !== null; });
+            var view = lp.currentView;
+            var list = findByName(view, "radioList");
+            var shown = function() {
+                var out = [];
+                for (var i = 0; i < view.rows.length; i++) {
+                    list.positionViewAtIndex(i, ListView.Contain);
+                    tryVerify(function() { return list.itemAtIndex(i) !== null && list.itemAtIndex(i).item !== null; });
+                    var it = list.itemAtIndex(i).item;
+                    out.push(view.rows[i].kind === "header" ? view.rows[i].name : it.title + "=" + it.subtitle);
+                }
+                return out;
+            };
+            compare(shown(), ["Search stations=Tens of thousands, from Radio Browser",
+                              "YOUR STATION LISTS", "Mine=2 stations", "RADIO BROWSER", "Jazz="]);
+            screenshot("radio");
+            // Search stations opens the radio search.
+            list.positionViewAtBeginning();
+            list.itemAtIndex(0).item.clicked();
+            settle();
+            compare(root.app.pageStack.depth, 2);
+            root.app.pageStack.pop(null);
+            var jazz = view.rows.filter(function(r) { return r.playlist && r.playlist.name === "Jazz"; })[0];
+            root.app.openServicePlaylist("radio", jazz.playlist);
+            settle();
+            var page = root.app.pageStack.currentItem;
+            tryCompare(page, "loading", false);
+            compare(page.detail, "2 stations");
+            // More stations: the next page, the one shown already not again;
+            // one that fails leaves the row to try again.
+            var more = findByName(page, "moreRow");
+            verify(more.visible);
+            compare(more.title, "More stations");
+            root.radioPageFails = true;
+            page.moreRequested();
+            tryCompare(page, "loadingMore", false);
+            compare(page.songs.length, 2);
+            verify(more.visible);
+            root.radioPageFails = false;
+            findByName(page, "trackList").positionViewAtEnd();
+            wait(50);
+            mouseClick(more);
+            verify(page.loadingMore || page.songs.length === 3);
+            tryCompare(page, "loadingMore", false);
+            compare(page.songs.map(function(t) { return t.title; }), ["Jazz FM", "Jazz 24", "Jazz Radio"]);
+            compare(page.detail, "3 stations");
+            verify(!more.visible);
+            compare(page.moreLabel, "");
+            // A station favourited is in the Radio tab's Favorite Stations,
+            // a streamed song in Favorites; they show once there is one.
+            var before = root.app.smartTracks("favorites").length;
+            var hasStations = function() { return view.rows.some(function(r) { return r.kind === "header" && r.name === "FAVORITE STATIONS"; }); };
+            verify(!hasStations());
+            var station = page.songs[1];
+            root.app.stats.setFavorite(station.path, true, Streaming.stored(station));
+            var tidal = { path: "tidal:fav-ui", title: "Streamed", artist: "A", album: "B", duration: 1000, artUrl: "",
+                          provider: "tidal", remote: true };
+            root.app.stats.setFavorite(tidal.path, true, tidal);
+            var stations = root.app.smartTracks("favoriteStations");
+            compare(stations.map(function(t) { return t.title; }), ["Jazz 24"]);
+            verify(stations[0].remote);
+            var favs = root.app.smartTracks("favorites");
+            compare(favs.length, before + 1);
+            compare(favs[favs.length - 1].title, "Streamed");
+            tryVerify(hasStations);
+            root.app.pageStack.pop(null);
+            compare(shown().slice(0, 3), ["Search stations=Tens of thousands, from Radio Browser",
+                                          "FAVORITE STATIONS", "Jazz 24=US"]);
+            // A favourite station plays on its own.
+            list.positionViewAtIndex(2, ListView.Contain);
+            list.itemAtIndex(2).item.clicked();
+            compare(root.app.player.queue.items.length, 1);
+            compare(root.app.player.current.path, station.path);
+            root.app.player.clearQueue();
+            root.app.openSmartPlaylist("favoriteStations");
+            settle();
+            compare(root.app.pageStack.currentItem.detail, "1 station");
+            compare(root.app.pageStack.currentItem.songs.length, 1);
+            root.app.stats.setFavorite(station.path, false);
+            root.app.stats.setFavorite(tidal.path, false);
+            compare(root.app.smartTracks("favorites").length, before);
+            compare(root.app.smartTracks("favoriteStations").length, 0);
+            tryVerify(function() { return !hasStations(); });
+            root.app.pageStack.pop(null);
+            root.app.streaming.transport = function(method, url, body, done) { done(404, null); };
+            root.app.streaming.refresh();
+            tryVerify(function() { return root.app.streaming.servicePlaylists.length === 0; });
+            lp.category = "albums";
+        }
+
+        // Home: what was left playing, the last played (the library's and
+        // streamed ones), the favourite stations and songs, the playlists;
+        // a station plays on its own, a song plays its list.
+        function test_19_home() {
+            var lp = root.app.pageStack.get(0);
+            root.app.player.clearQueue();
+            lp.category = "home";
+            tryVerify(function() { return lp.currentView !== null && lp.currentView.few !== undefined; });
+            var view = lp.currentView;
+            var songs = root.app.library.lib.songs;
+            var station = { path: "radio:rb.home", title: "Home FM", artist: "NL", album: "MP3", duration: 0, artUrl: "",
+                            provider: "radio", remote: true };
+            var streamed = { path: "tidal:home", title: "Streamed Home", artist: "Band", album: "B", duration: 200000,
+                             artUrl: "", provider: "tidal", remote: true };
+            // The fixtures are 3 s long, too short to count as played.
+            root.app.stats.trackFinished({ path: songs[2].path, duration: 200000 }, 200000, true);
+            wait(5);
+            root.app.stats.trackFinished(streamed, 200000, true);
+            wait(5);
+            root.app.stats.trackFinished(station, 300000, false);
+            root.app.stats.setFavorite(station.path, true, station);
+            // Favourited, never played: not among the played.
+            var unplayed = { path: "tidal:never", title: "Never", artist: "X", album: "Y", duration: 200000, artUrl: "",
+                             provider: "tidal", remote: true };
+            root.app.stats.setFavorite(unplayed.path, true, unplayed);
+            var names = function() { return view.rows.filter(function(r) { return r.kind === "header"; }).map(function(r) { return r.name; }); };
+            tryVerify(function() { return names().indexOf("FAVORITE STATIONS") >= 0; });
+            var heads = names();
+            verify(heads.indexOf("JUMP BACK IN") < 0);
+            compare(heads.slice(0, 2), ["RECENTLY PLAYED", "FAVORITE STATIONS"]);
+            var recent = root.app.smartTracks("recentlyPlayed");
+            compare(recent.slice(0, 3).map(function(t) { return t.path; }), [station.path, streamed.path, songs[2].path]);
+            verify(recent[0].remote);
+            verify(!recent.some(function(t) { return t.path === unplayed.path; }));
+            var rows = view.rows.filter(function(r) { return r.kind === "track" && r.list === "recentlyPlayed"; });
+            verify(rows.length > 0 && rows.length <= view.few);
+            screenshot("home");
+            // A station: on its own.
+            view.playFrom("recentlyPlayed", 0);
+            compare(root.app.player.queue.items.length, 1);
+            compare(root.app.player.current.path, station.path);
+            // A song: its list, without the stations.
+            view.playFrom("recentlyPlayed", 2);
+            compare(root.app.player.current.path, songs[2].path);
+            verify(root.app.player.queue.items.every(function(t) { return t.provider !== "radio"; }));
+            // Playing: nothing to jump back into.
+            tryVerify(function() { return root.app.player.playing; });
+            verify(names().indexOf("JUMP BACK IN") < 0);
+            // Left paused: Jump back in, at the top.
+            root.app.player.pause();
+            tryVerify(function() { return names()[0] === "JUMP BACK IN"; });
+            compare(view.rows[1].kind, "resume");
+            compare(view.rows[1].track.path, songs[2].path);
+            // More than a few: See all opens the list.
+            for (var i = 0; i < view.few + 1; i++)
+                root.app.stats.setFavorite(songs[i].path, true);
+            tryVerify(function() { return view.rows.some(function(r) { return r.kind === "all" && r.smart === "favorites"; }); });
+            compare(view.rows.filter(function(r) { return r.kind === "track" && r.list === "favorites"; }).length, view.few);
+            var list = findByName(view, "homeList");
+            var at = -1;
+            for (var k = 0; k < view.rows.length; k++)
+                if (view.rows[k].kind === "all" && view.rows[k].smart === "favorites")
+                    at = k;
+            list.positionViewAtIndex(at, ListView.Contain);
+            tryVerify(function() { return list.itemAtIndex(at) !== null && list.itemAtIndex(at).item !== null; });
+            compare(list.itemAtIndex(at).item.title, "See all");
+            list.itemAtIndex(at).item.clicked();
+            settle();
+            compare(root.app.pageStack.currentItem.objectName, "smartPlaylistPage");
+            compare(root.app.pageStack.currentItem.title, "Favorites");
+            root.app.pageStack.pop(null);
+            for (var j = 0; j < view.few + 1; j++)
+                root.app.stats.setFavorite(songs[j].path, false);
+            root.app.stats.setFavorite(station.path, false);
+            root.app.stats.setFavorite(unplayed.path, false);
+            root.app.player.clearQueue();
             lp.category = "albums";
         }
 
@@ -777,6 +990,8 @@ Item {
         }
 
         function test_01_library_built() {
+            // The app opens on Home.
+            compare(root.app.pageStack.get(0).category, "home");
             var lib = root.app.library.lib;
             compare(lib.songs.length, 10);
             compare(lib.albums.length, 3);
@@ -1157,6 +1372,34 @@ Item {
             root.app.closeNowPlaying();
             root.app.openTarget("/no/such/file.mp3");
             compare(root.app.lastNotification, "Cannot find file.mp3.");
+        }
+
+        // A web stream handed to the app (Atlas, Files, Email: Music is the
+        // system default for audio) plays through Internet Radio, which
+        // resolves it - a station's .pls or .m3u to its stream.
+        function test_11_open_web_stream() {
+            var resolved = [];
+            root.app.streaming.transport = function(method, url, body, done) {
+                var path = url.replace(root.app.streaming.baseUrl, "");
+                if (path === "/provider/radio/resolve") {
+                    resolved.push(body.trackId);
+                    return done(200, { url: "http://icecast.example/radio1-bb-mp3" });
+                }
+                done(404, { error: "no" });
+            };
+            root.app.openTarget("http://icecast.example/radio1-bb-mp3");
+            compare(root.app.player.current.path, "radio:u.aHR0cDovL2ljZWNhc3QuZXhhbXBsZS9yYWRpbzEtYmItbXAz");
+            compare(root.app.player.current.title, "radio1-bb-mp3");
+            compare(root.app.player.current.album, "Internet Radio");
+            compare(root.app.player.current.duration, 0);
+            tryVerify(function() { return resolved.length > 0; }, 3000);
+            compare(resolved[0], "u.aHR0cDovL2ljZWNhc3QuZXhhbXBsZS9yYWRpbzEtYmItbXAz");
+            root.app.closeNowPlaying();
+            root.app.openTarget("https://s.example/live.pls", { title: "My Station" });
+            compare(root.app.player.current.title, "My Station");
+            compare(root.app.player.count, 1);
+            root.app.player.clearQueue();
+            root.app.closeNowPlaying();
         }
 
         function test_12_launch_actions_and_exhibition() {

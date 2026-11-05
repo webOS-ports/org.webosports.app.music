@@ -136,6 +136,38 @@ Item {
             verify(!Streaming.isRemote("/a.mp3"));
         }
 
+        // A web stream plays through Internet Radio: "radio:u." and the
+        // address as Go's base64.RawURLEncoding has it (radio.go decodes it).
+        function test_web_stream_path() {
+            compare(Streaming.webStreamPath("http://mine.example/1"), "radio:u.aHR0cDovL21pbmUuZXhhbXBsZS8x");
+            compare(Streaming.webStreamPath("http://a.example/ab"), "radio:u.aHR0cDovL2EuZXhhbXBsZS9hYg");
+            compare(Streaming.webStreamPath("http://a.example/abc"), "radio:u.aHR0cDovL2EuZXhhbXBsZS9hYmM");
+            compare(Streaming.webStreamPath("http://a.example/~~~?>>"), "radio:u.aHR0cDovL2EuZXhhbXBsZS9-fn4_Pj4");
+            compare(Streaming.webStreamPath("https://radio.example/caf\u00e9.mp3?a=1"),
+                    "radio:u.aHR0cHM6Ly9yYWRpby5leGFtcGxlL2NhZsOpLm1wMz9hPTE");
+            compare(Streaming.webStreamPath("HTTPS://radio.example/x"), "radio:u." + "SFRUUFM6Ly9yYWRpby5leGFtcGxlL3g");
+            compare(Streaming.webStreamPath("/media/internal/a.mp3"), null);
+            compare(Streaming.webStreamPath("file:///a.mp3"), null);
+            compare(Streaming.webStreamPath("youtube:abc"), null);
+            compare(Streaming.webStreamPath("ftp://a.example/x.mp3"), null);
+            compare(Streaming.webStreamPath("http://"), null);
+            compare(Streaming.webStreamPath("http://a.example/a b.mp3"), null);
+            compare(Streaming.webStreamPath(undefined), null);
+            var p = Streaming.webStreamPath("http://mine.example/1");
+            compare(Streaming.split(p), { provider: "radio", id: "u.aHR0cDovL21pbmUuZXhhbXBsZS8x" });
+            compare(Streaming.displayName("radio"), "Internet Radio");
+        }
+
+        function test_web_stream_title() {
+            compare(Streaming.webStreamTitle("http://icecast.omroep.nl/radio1-bb-mp3"), "radio1-bb-mp3");
+            compare(Streaming.webStreamTitle("https://s.example/live/caf%C3%A9.pls?x=1#y"), "caf\u00e9.pls");
+            compare(Streaming.webStreamTitle("https://s.example/"), "s.example");
+            compare(Streaming.webStreamTitle("https://s.example/stations/radio1/"), "radio1");
+            compare(Streaming.webStreamTitle("https://s.example:8000"), "s.example:8000");
+            compare(Streaming.webStreamTitle("https://s.example/a%ZZ"), "a%ZZ");
+            compare(Streaming.webStreamTitle("not a link"), "");
+        }
+
         function test_track() {
             var t = Streaming.track({ id: "42", provider: "tidal", title: "T", artist: "A", album: "",
                                       thumbnail: "https://img/1.jpg", duration_ms: 123000, path: "tidal:42" }, "Tidal");
@@ -171,8 +203,74 @@ Item {
             compare(Streaming.signedIn(null, accounts).length, 0);
         }
 
+        // A media server signed in in Videos is signed in here too; only
+        // those three, and only with their own kind of account.
+        function test_signed_in_through_videos() {
+            var daemon = [{ id: "jellyfin" }, { id: "emby" }, { id: "plex", name: "Plex" }, { id: "tidal" }, { id: "subsonic" }];
+            var accounts = ["org.webosports.video.jellyfin", "org.webosports.video.plex", "org.webosports.video.tidal",
+                            "org.webosports.video.subsonic", "org.webosports.app.music.emby"];
+            compare(Streaming.signedIn(daemon, accounts).map(function(p) { return p.id + "=" + p.name; }),
+                    ["emby=Emby", "jellyfin=Jellyfin", "plex=Plex"]);
+            compare(Streaming.signedIn(daemon, ["org.webosports.video.emby"]).map(function(p) { return p.id; }), ["emby"]);
+        }
+
         // A Subsonic song says where it sits on its album; one that says
         // nothing, or nonsense, sits nowhere.
+        // Each service shows its account's icon: Music's own account first,
+        // Videos' for a media server only; none without an account.
+        function test_signed_in_icons() {
+            var daemon = [{ id: "jellyfin" }, { id: "subsonic" }, { id: "tidal" }, { id: "youtube" }, { id: "plex" }];
+            var accounts = ["org.webosports.video.jellyfin", "org.webosports.app.music.subsonic",
+                            "org.webosports.video.tidal", "org.webosports.app.music.plex", "org.webosports.video.plex"];
+            var icons = {
+                "org.webosports.video.jellyfin": "/usr/palm/public/accounts/org.webosports.video.jellyfin/images/jellyfin-48x48.png",
+                "org.webosports.app.music.subsonic": "/a/subsonic.png",
+                "org.webosports.video.tidal": "/a/tidal.png",
+                "org.webosports.app.music.plex": "/a/music-plex.png",
+                "org.webosports.video.plex": "/a/video-plex.png"
+            };
+            compare(Streaming.signedIn(daemon, accounts, icons).map(function(p) { return p.id + "=" + p.icon; }),
+                    ["jellyfin=file:///usr/palm/public/accounts/org.webosports.video.jellyfin/images/jellyfin-48x48.png",
+                     "plex=file:///a/music-plex.png", "subsonic=file:///a/subsonic.png", "youtube="]);
+            // Only a file's own path; nothing given, nothing shown.
+            compare(Streaming.signedIn([{ id: "subsonic" }], accounts, { "org.webosports.app.music.subsonic": "images/s.png" })[0].icon, "");
+            compare(Streaming.signedIn([{ id: "subsonic" }], accounts)[0].icon, "");
+            // A service of Music's own takes no icon of a Videos account.
+            compare(Streaming.signedIn([{ id: "tidal" }], ["org.webosports.app.music.tidal"], icons)[0].icon, "");
+        }
+
+        // listAccounts' answer: the accounts not being deleted, with the
+        // first 48x48 icon file of each kind; no list, null.
+        function test_accounts_from() {
+            var got = Streaming.accountsFrom({ returnValue: true, results: [
+                { templateId: "org.webosports.video.m3u", icon: { loc_32x32: "/m32.png", loc_48x48: "/m1.png" } },
+                { templateId: "org.webosports.video.m3u", icon: { loc_48x48: "/m2.png" } },
+                { templateId: "org.webosports.app.music.tidal", beingDeleted: true, icon: { loc_48x48: "/t.png" } },
+                { templateId: "org.webosports.app.music.subsonic" },
+                { templateId: "org.webosports.app.music.deezer", icon: { loc_32x32: "/d32.png" } },
+                { templateId: "org.webosports.app.music.qobuz", icon: { loc_32x32: "/q32.png", loc_48x48: 48 } },
+                null
+            ] });
+            compare(got.ids, ["org.webosports.video.m3u", "org.webosports.video.m3u", "org.webosports.app.music.subsonic",
+                              "org.webosports.app.music.deezer", "org.webosports.app.music.qobuz"]);
+            compare(got.icons, { "org.webosports.video.m3u": "/m1.png" });
+            compare(Streaming.accountsFrom({ returnValue: false, results: [] }), null);
+            compare(Streaming.accountsFrom({ returnValue: true }), null);
+            compare(Streaming.accountsFrom(null), null);
+        }
+
+        // A service playlist's line: its count, stations for radio; with no
+        // count, where it is from.
+        function test_playlist_detail() {
+            compare(Streaming.playlistDetail("radio", 0, "Radio Browser"), "Radio Browser");
+            compare(Streaming.playlistDetail("radio", 12, "stations.m3u"), "12 stations");
+            compare(Streaming.playlistDetail("radio", 1, ""), "1 station");
+            compare(Streaming.playlistDetail("tidal", 30, "me"), "30 songs");
+            compare(Streaming.playlistDetail("tidal", 1, "me"), "1 song");
+            compare(Streaming.playlistDetail("tidal", 0, ""), "");
+            compare(Streaming.playlistDetail("tidal", undefined, "me"), "me");
+        }
+
         function test_track_place() {
             var t = Streaming.track({ id: "s1", provider: "subsonic", title: "T", track: 3, disc: 2 }, "Subsonic");
             compare(t.track, 3);
@@ -254,12 +352,103 @@ Item {
         }
     }
 
+    Component {
+        id: statsComponent
+        StatsStore {}
+    }
+
+    // A favourite station keeps what Favorites shows of it, also after the
+    // app starts again; a song of the library, or a track that is not the
+    // one favourited, keeps nothing.
+    TestCase {
+        name: "StreamedFavorites"
+
+        function fresh() {
+            var st = createTemporaryObject(statsComponent, root);
+            st.load();
+            tryVerify(function() { return st.ready; }, 3000);
+            return st;
+        }
+
+        function test_kept_and_listed() {
+            var station = { path: "radio:rb.fav-test", title: "NPO Radio 1", artist: "The Netherlands",
+                            album: "MP3 · 192 kbps", duration: 0, artUrl: "https://example.org/npo.png",
+                            provider: "radio", remote: true };
+            var song = { path: "tidal:fav-test", title: "Alpha", artist: "Aardvark", album: "A", duration: 1000,
+                         artUrl: "", provider: "tidal", remote: true };
+            var a = fresh();
+            a.setFavorite(station.path, true, station);
+            a.setFavorite(song.path, true, song);
+            a.setFavorite("tidal:fav-test-nothing", true);
+            a.setFavorite("tidal:fav-test-other", true, song);
+            a.setFavorite("/music/fav-test.mp3", true, "/music/fav-test.mp3");
+            compare(a.streamedFavorites().map(function(t) { return t.title; }), ["Alpha", "NPO Radio 1"]);
+            verify(a.isFavorite("tidal:fav-test-nothing"));
+            a.flush();
+
+            var b = fresh();
+            var got = b.streamedFavorites();
+            compare(got.length, 2);
+            compare(got[1].path, station.path);
+            compare(got[1].artUrl, station.artUrl);
+            compare(got[1].provider, "radio");
+            verify(got[1].remote);
+
+            // Favourited before Favorites kept streamed tracks: kept now.
+            b.setFavorite("tidal:fav-test-nothing", true, { path: "tidal:fav-test-nothing", title: "Late",
+                                                              artist: "", remote: true });
+            compare(b.streamedFavorites().length, 3);
+            // Taken out of Favorites.
+            b.setFavorite(station.path, false, station);
+            b.setFavorite(song.path, false);
+            b.setFavorite("tidal:fav-test-nothing", false);
+            compare(b.streamedFavorites().length, 0);
+            b.flush();
+        }
+    }
+
     TestCase {
         name: "StreamingStore"
 
         function init() {
             root.calls = [];
             root.answers = {};
+        }
+
+        // A playlist a page at a time: offset asked for when given, next
+        // from the service while it says there is more, and only forward.
+        function test_playlist_pages() {
+            root.answers["GET /provider/radio/playlist"] = function(body, path) {
+                if (/offset=100/.test(path))
+                    return [200, { tracks: [{ id: "rb.b", provider: "radio", title: "B", path: "radio:rb.b" }], more: false, next: 0 }];
+                if (/offset=7/.test(path))
+                    return [200, { tracks: [], more: true, next: 3 }];
+                if (/offset=8/.test(path))
+                    return [200, { tracks: [], more: true }];
+                if (/offset=9/.test(path))
+                    return [200, { tracks: [], more: false, next: 200 }];
+                return [200, { tracks: [{ id: "rb.a", provider: "radio", title: "A", path: "radio:rb.a" }], more: true, next: 100 }];
+            };
+            var got = [];
+            var keep = function(tracks, error, next) { got.push([tracks.map(function(t) { return t.title; }).join(","), error, next]); };
+            store.playlistTracks("radio", "rb.top", keep);
+            store.playlistTracks("radio", "rb.top", keep, 100);
+            store.playlistTracks("radio", "rb.top", keep, 7);
+            store.playlistTracks("radio", "rb.top", keep, 8);
+            store.playlistTracks("radio", "rb.top", keep, 9);
+            tryCompare(got, "length", 5);
+            compare(got, [["A", "", 100], ["B", "", 0], ["", "", 0], ["", "", 0], ["", "", 0]]);
+            var asked = root.calls.filter(function(c) { return c.path.indexOf("/provider/radio/playlist") === 0; })
+                                  .map(function(c) { return c.path; });
+            compare(asked.slice(-5), ["/provider/radio/playlist?id=rb.top", "/provider/radio/playlist?id=rb.top&offset=100",
+                                      "/provider/radio/playlist?id=rb.top&offset=7", "/provider/radio/playlist?id=rb.top&offset=8",
+                                      "/provider/radio/playlist?id=rb.top&offset=9"]);
+            root.answers["GET /provider/radio/playlist"] = [502, { error: "down" }];
+            got = [];
+            store.playlistTracks("radio", "rb.top", keep, 100);
+            tryCompare(got, "length", 1);
+            compare(got[0], ["", "down", 0]);
+            delete root.answers["GET /provider/radio/playlist"];
         }
 
         function test_unavailable_without_daemon() {
