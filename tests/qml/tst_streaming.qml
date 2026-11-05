@@ -259,6 +259,18 @@ Item {
             compare(Streaming.accountsFrom(null), null);
         }
 
+        // A service playlist's line: its count, stations for radio; with no
+        // count, where it is from.
+        function test_playlist_detail() {
+            compare(Streaming.playlistDetail("radio", 0, "Radio Browser"), "Radio Browser");
+            compare(Streaming.playlistDetail("radio", 12, "stations.m3u"), "12 stations");
+            compare(Streaming.playlistDetail("radio", 1, ""), "1 station");
+            compare(Streaming.playlistDetail("tidal", 30, "me"), "30 songs");
+            compare(Streaming.playlistDetail("tidal", 1, "me"), "1 song");
+            compare(Streaming.playlistDetail("tidal", 0, ""), "");
+            compare(Streaming.playlistDetail("tidal", undefined, "me"), "me");
+        }
+
         function test_track_place() {
             var t = Streaming.track({ id: "s1", provider: "subsonic", title: "T", track: 3, disc: 2 }, "Subsonic");
             compare(t.track, 3);
@@ -337,6 +349,61 @@ Item {
             compare(r.items[0].artUrl, "u");
             compare(r.items[0].provider, "tidal");
             verify(r.items[0].remote);
+        }
+    }
+
+    Component {
+        id: statsComponent
+        StatsStore {}
+    }
+
+    // A favourite station keeps what Favorites shows of it, also after the
+    // app starts again; a song of the library, or a track that is not the
+    // one favourited, keeps nothing.
+    TestCase {
+        name: "StreamedFavorites"
+
+        function fresh() {
+            var st = createTemporaryObject(statsComponent, root);
+            st.load();
+            tryVerify(function() { return st.ready; }, 3000);
+            return st;
+        }
+
+        function test_kept_and_listed() {
+            var station = { path: "radio:rb.fav-test", title: "NPO Radio 1", artist: "The Netherlands",
+                            album: "MP3 · 192 kbps", duration: 0, artUrl: "https://example.org/npo.png",
+                            provider: "radio", remote: true };
+            var song = { path: "tidal:fav-test", title: "Alpha", artist: "Aardvark", album: "A", duration: 1000,
+                         artUrl: "", provider: "tidal", remote: true };
+            var a = fresh();
+            a.setFavorite(station.path, true, station);
+            a.setFavorite(song.path, true, song);
+            a.setFavorite("tidal:fav-test-nothing", true);
+            a.setFavorite("tidal:fav-test-other", true, song);
+            a.setFavorite("/music/fav-test.mp3", true, "/music/fav-test.mp3");
+            compare(a.streamedFavorites().map(function(t) { return t.title; }), ["Alpha", "NPO Radio 1"]);
+            verify(a.isFavorite("tidal:fav-test-nothing"));
+            a.flush();
+
+            var b = fresh();
+            var got = b.streamedFavorites();
+            compare(got.length, 2);
+            compare(got[1].path, station.path);
+            compare(got[1].artUrl, station.artUrl);
+            compare(got[1].provider, "radio");
+            verify(got[1].remote);
+
+            // Favourited before Favorites kept streamed tracks: kept now.
+            b.setFavorite("tidal:fav-test-nothing", true, { path: "tidal:fav-test-nothing", title: "Late",
+                                                              artist: "", remote: true });
+            compare(b.streamedFavorites().length, 3);
+            // Taken out of Favorites.
+            b.setFavorite(station.path, false, station);
+            b.setFavorite(song.path, false);
+            b.setFavorite("tidal:fav-test-nothing", false);
+            compare(b.streamedFavorites().length, 0);
+            b.flush();
         }
     }
 

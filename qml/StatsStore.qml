@@ -25,6 +25,10 @@ import LuneOS.Service 1.0
  *
  *     { path, playCount, skipCount, lastPlayed (ms), favorite, bookmark (ms) }
  *
+ * plus, for a favourite streamed track (a station, a Tidal song...), the
+ * track as a playlist keeps it (track: Streaming.stored()), so Favorites
+ * can show it without asking its service.
+ *
  * The media indexer's kinds are not the app's to write to, and a re-scan
  * would lose anything kept there.
  */
@@ -140,12 +144,35 @@ Item {
         return !!(r && r.favorite);
     }
 
-    function setFavorite(path, on) {
+    /* stored: the track as Streaming.stored() keeps it; a streamed one is
+     * kept with the favourite. */
+    function setFavorite(path, on, stored) {
         var r = _record(path);
-        if (!!r.favorite === !!on)
+        var keep = on && stored && typeof stored === "object" && stored.remote === true ? stored : null;
+        if (!!r.favorite === !!on && (!keep || _keeps(r)))
             return;
         r.favorite = !!on;
+        if (keep)
+            r.track = keep;
         _changed(r);
+    }
+
+    // Whether the record keeps its streamed track (the one of its path).
+    function _keeps(r) {
+        return !!r.track && typeof r.track === "object" && r.track.path === r.path;
+    }
+
+    /* The favourite streamed tracks, as kept: by artist, then title. */
+    function streamedFavorites() {
+        var out = [];
+        for (var path in byPath) {
+            var r = byPath[path];
+            if (r.favorite && _keeps(r))
+                out.push(r.track);
+        }
+        function key(t) { return String(t.artist || "").toLowerCase() + "\u0001" + String(t.title || "").toLowerCase(); }
+        out.sort(function(a, b) { return key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0; });
+        return out;
     }
 
     function bookmarkOf(path) {
@@ -185,6 +212,8 @@ Item {
             }
             var o = { _kind: kind, path: r.path, playCount: r.playCount || 0, skipCount: r.skipCount || 0,
                       lastPlayed: r.lastPlayed || 0, favorite: !!r.favorite, bookmark: r.bookmark || 0 };
+            if (r.track)
+                o.track = r.track;
             if (r._id) {
                 o._id = r._id;
                 known.push(o);

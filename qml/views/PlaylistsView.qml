@@ -20,6 +20,7 @@ import LunaNext.Common 0.1
 
 import "../components"
 import "../js/Library.js" as Library
+import "../js/Streaming.js" as Streaming
 
 /*
  * The automatic playlists (favourites, recently added, most played...)
@@ -102,7 +103,9 @@ Item {
             width: list.width
             theme: view.theme
             title: modelData.kind === "new" ? "New Playlist" : modelData.name
-            subtitle: modelData.kind === "new" ? "" : Library.plural(modelData.count, "song", "songs")
+            subtitle: modelData.kind === "new" ? ""
+                      : modelData.kind === "service" ? Streaming.playlistDetail(modelData.provider, modelData.count, modelData.owner)
+                      : Library.plural(modelData.count, "song", "songs")
             icon: modelData.kind === "new" ? "playlist-add"
                   : (modelData.id === "favorites" ? "heart" : "playlist")
             artPath: modelData.kind === "user" ? modelData.artPath : ""

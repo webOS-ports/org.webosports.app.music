@@ -888,7 +888,9 @@ WebOSWindow {
     }
 
     function smartTracks(id) {
-        return Library.smartPlaylist(id, library.lib.songs, stats.asMap(), Date.now(), 100);
+        var list = Library.smartPlaylist(id, library.lib.songs, stats.asMap(), Date.now(), 100);
+        // Favourite stations and streamed songs, after the library's.
+        return id === "favorites" ? list.concat(stats.streamedFavorites()) : list;
     }
 
     function openSmartPlaylist(id) {
@@ -940,6 +942,8 @@ WebOSWindow {
         streaming.playlistTracks(providerId, playlist.id, function(tracks, error) {
             page.loading = false;
             page.songs = tracks;
+            if (providerId === "radio")
+                page.detail = Streaming.countOf(providerId, tracks.length);
             if (error)
                 notify(error);
         });
@@ -1167,7 +1171,7 @@ WebOSWindow {
         choices.push({ label: "Add to Playlist…", action: function() { appWindow.addToPlaylist([Streaming.stored(song)]); } });
         var fav = stats.isFavorite(song.path);
         choices.push({ label: fav ? "Remove from Favorites" : "Add to Favorites",
-                       action: function() { stats.setFavorite(song.path, !fav); } });
+                       action: function() { stats.setFavorite(song.path, !fav, Streaming.stored(song)); } });
         if (library.song(song.path)) {
             choices.push({ label: "Go to Album", action: function() { appWindow.openAlbumOf(song); } });
             choices.push({ label: "Go to Artist", action: function() { appWindow.openArtistOf(song); } });

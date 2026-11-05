@@ -262,6 +262,23 @@ function artist(a) {
     };
 }
 
+/*
+ * What a service's playlist says under its name: how many it holds, as
+ * stations for radio; the one it is from when the service gives no count
+ * (Radio Browser's lists, read only when opened).
+ */
+function playlistDetail(providerId, count, owner) {
+    if (count > 0)
+        return countOf(providerId, count);
+    return owner || "";
+}
+
+/* "12 songs", or "12 stations" of radio. */
+function countOf(providerId, n) {
+    var radio = providerId === "radio";
+    return n + " " + (n === 1 ? (radio ? "station" : "song") : (radio ? "stations" : "songs"));
+}
+
 /* "2024 · 12 songs", what an album of a service says of itself. */
 function albumDetail(al) {
     var parts = [];

@@ -18,6 +18,7 @@ import QtQuick
 import QtTest
 
 import LuneOS.Service 1.0
+import "../../qml/js/Streaming.js" as Streaming
 
 /*
  * The app itself, qml/main.qml, with luneos-components' desktop stand-ins
@@ -399,6 +400,60 @@ Item {
             compare(page.songs[0].title, "Highway");
             verify(!page.canEdit);
             screenshot("spotify-playlist");
+            root.app.pageStack.pop(null);
+            root.app.streaming.transport = function(method, url, body, done) { done(404, null); };
+            root.app.streaming.refresh();
+            tryVerify(function() { return root.app.streaming.servicePlaylists.length === 0; });
+            lp.category = "albums";
+        }
+
+        // Radio's lists say what they are from, or how many stations - not
+        // songs; a station favourited is in Favorites.
+        function test_18_radio_lists_and_favorites() {
+            root.app.streaming.transport = function(method, url, body, done) {
+                var path = url.replace(/^http:\/\/127\.0\.0\.1:8730/, "").replace(/\?.*$/, "");
+                if (path === "/providers")
+                    return done(200, { providers: [{ id: "radio", name: "Internet Radio" }] });
+                if (path === "/provider/radio/playlists")
+                    return done(200, { playlists: [{ id: "rb.tag.jazz", name: "Jazz", owner: "Radio Browser", thumbnail: "", tracks: 0 },
+                                                   { id: "l0", name: "Mine", owner: "mine.m3u", thumbnail: "", tracks: 2 }] });
+                if (path === "/provider/radio/playlist")
+                    return done(200, { tracks: [
+                        { id: "rb.s1", provider: "radio", title: "Jazz FM", artist: "UK", album: "MP3", duration_ms: 0, path: "radio:rb.s1" },
+                        { id: "rb.s2", provider: "radio", title: "Jazz 24", artist: "US", album: "AAC", duration_ms: 0, path: "radio:rb.s2" }] });
+                done(404, { error: "no" });
+            };
+            root.app.streaming.refresh();
+            tryVerify(function() { return root.app.streaming.servicePlaylists.length === 1; });
+            var lp = root.app.pageStack.get(0);
+            lp.category = "playlists";
+            wait(100);
+            var view = lp.currentView;
+            var list = findByName(view, "playlistsList");
+            var subtitles = {};
+            for (var i = 0; i < view.rows.length; i++) {
+                if (view.rows[i].kind !== "service")
+                    continue;
+                list.positionViewAtIndex(i, ListView.Contain);
+                tryVerify(function() { return list.itemAtIndex(i) !== null && list.itemAtIndex(i).item !== null; });
+                subtitles[view.rows[i].name] = list.itemAtIndex(i).item.subtitle;
+            }
+            compare(subtitles, { "Jazz": "Radio Browser", "Mine": "2 stations" });
+            var jazz = view.rows.filter(function(r) { return r.name === "Jazz"; })[0];
+            root.app.openServicePlaylist("radio", jazz.playlist);
+            settle();
+            var page = root.app.pageStack.currentItem;
+            tryCompare(page, "loading", false);
+            compare(page.detail, "2 stations");
+            // Favourited from its menu, as a station is.
+            var before = root.app.smartTracks("favorites").length;
+            root.app.stats.setFavorite(page.songs[1].path, true, Streaming.stored(page.songs[1]));
+            var favs = root.app.smartTracks("favorites");
+            compare(favs.length, before + 1);
+            compare(favs[favs.length - 1].title, "Jazz 24");
+            verify(favs[favs.length - 1].remote);
+            root.app.stats.setFavorite(page.songs[1].path, false);
+            compare(root.app.smartTracks("favorites").length, before);
             root.app.pageStack.pop(null);
             root.app.streaming.transport = function(method, url, body, done) { done(404, null); };
             root.app.streaming.refresh();
