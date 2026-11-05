@@ -21,6 +21,7 @@ import LunaNext.Common 0.1
 import "components"
 import "js/Art.js" as Art
 import "js/Library.js" as Library
+import "js/Podcasts.js" as Podcasts
 import "js/Streaming.js" as Streaming
 
 /*
@@ -54,6 +55,7 @@ Rectangle {
     signal closeRequested()
 
     readonly property var track: player ? player.current : null
+    readonly property bool episode: !!track && Podcasts.isEpisode(track.path)
     // { format, formats } of a streamed track whose service has a choice.
     readonly property var format: player ? player.currentFormat : null
     readonly property bool landscape: width >= height
@@ -458,11 +460,26 @@ Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: controls.width < Units.gu(45) ? controls.btn * 0.1 : Units.gu(2)
 
+            // A podcast episode: 15 s back and 30 s on where shuffle and
+            // repeat are, which mean little for it.
+            IconButton {
+                objectName: "skipBackButton"
+                anchors.verticalCenter: parent.verticalCenter
+                width: controls.btn
+                height: controls.btn
+                visible: np.episode
+                image: "back15"
+                label: "Back 15 seconds"
+                iconSize: controls.btn * 0.62
+                accent: np.theme.accent
+                onClicked: np.player.seek(Math.max(0, np.player.position - 15000))
+            }
             IconButton {
                 objectName: "shuffleButton"
                 anchors.verticalCenter: parent.verticalCenter
                 width: controls.btn
                 height: controls.btn
+                visible: !np.episode
                 image: "shuffle"
                 label: "Shuffle"
                 active: !!(np.player && np.player.shuffle)
@@ -511,10 +528,23 @@ Rectangle {
                 onCanceled: seeker.end()
             }
             IconButton {
+                objectName: "skipForwardButton"
+                anchors.verticalCenter: parent.verticalCenter
+                width: controls.btn
+                height: controls.btn
+                visible: np.episode
+                image: "forward30"
+                label: "On 30 seconds"
+                iconSize: controls.btn * 0.62
+                accent: np.theme.accent
+                onClicked: np.player.seek(np.player.position + 30000)
+            }
+            IconButton {
                 objectName: "repeatButton"
                 anchors.verticalCenter: parent.verticalCenter
                 width: controls.btn
                 height: controls.btn
+                visible: !np.episode
                 image: np.player && np.player.repeat === "one" ? "repeat-one" : "repeat"
                 label: "Repeat " + (np.player ? np.player.repeat : "off")
                 active: !!(np.player && np.player.repeat !== "off")

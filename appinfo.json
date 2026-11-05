@@ -57,7 +57,8 @@
         { "mime": "audio/x-matroska", "extension": "mka", "stream": true },
         { "mime": "audio/x-mpegurl", "extension": "m3u", "stream": true },
         { "mime": "audio/mpegurl", "extension": "m3u8", "stream": true },
-        { "mime": "audio/x-scpls", "extension": "pls", "stream": true }
+        { "mime": "audio/x-scpls", "extension": "pls", "stream": true },
+        { "mime": "text/x-opml", "extension": "opml" }
     ],
-    "keywords": [ "Music", "Music Player", "Songs", "Albums", "Artists", "Playlists", "Audio", "MP3", "FLAC", "Player", "Now Playing" ]
+    "keywords": [ "Music", "Music Player", "Songs", "Albums", "Artists", "Playlists", "Podcasts", "Audio", "MP3", "FLAC", "Player", "Now Playing" ]
 }

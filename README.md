@@ -108,6 +108,24 @@ Tablet (TouchPad, 1024x768):
   playlist keeps their title and cover); the queue keeps them across
   restarts.
 
+**Podcasts**
+- A Podcasts tab: find a podcast in the webOS Archive podcast directory
+  (podcasts.webosarchive.org, the one drPodder uses) or by its feed's
+  address, subscribe, and listen; Continue Listening and New Episodes over
+  all podcasts, Continue Listening on Home too.
+- The music streaming service keeps the podcasts (`/podcasts/*`): it reads
+  the feeds (RSS, Atom), remembers where each episode was left, looks for
+  new ones every few hours and downloads the newest of each podcast that
+  asks for it (Wi-Fi only by default), also while Music is closed, with a
+  notification for new episodes; played downloads go after a week.
+- Downloads go to `/media/internal/podcasts`; an episode plays from its
+  download when it has one, from the web otherwise.
+- Episodes resume where they were left; Now Playing has 15 s back and 30 s
+  on in place of shuffle and repeat, with the speed and the sleep timer
+  as for any track. A video episode plays in Videos.
+- Import and export of the podcasts as OPML, from a file on the device,
+  an address, or an .opml file opened in Files.
+
 **Playlists and listening history**
 - Playlists in the app's own db8 kind; import M3U/M3U8/PLS from Folders,
   export M3U8 to `/media/internal/Playlists`.
