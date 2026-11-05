@@ -434,8 +434,17 @@ Item {
             };
             root.app.streaming.refresh();
             tryVerify(function() { return root.app.streaming.servicePlaylists.length === 1; });
-            // Radio has a tab of its own, after Home; Playlists has none of it.
-            compare(root.app.categories.map(function(c) { return c.id; }).slice(0, 2), ["home", "radio"]);
+            // Radio has a tab of its own, after Home and before Streaming, and
+            // the library starts a group of its own; Playlists has none of it.
+            compare(root.app.categories.map(function(c) { return c.id; }).slice(0, 4), ["home", "radio", "streaming", "albums"]);
+            compare(root.app.categories.filter(function(c) { return c.groupStart; }).map(function(c) { return c.id; }), ["albums"]);
+            var dividers = function(item, name) {
+                var n = item.objectName === name && item.visible ? 1 : 0;
+                for (var i = 0; i < item.children.length; i++)
+                    n += dividers(item.children[i], name);
+                return n;
+            };
+            tryVerify(function() { return dividers(findByName(root.app, "categoryTabs"), "tabGroupDivider") === 1; });
             var lp = root.app.pageStack.get(0);
             lp.category = "playlists";
             tryVerify(function() { return lp.currentView !== null && lp.currentView.rows !== undefined && findByName(lp.currentView, "playlistsList") !== null; });

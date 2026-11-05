@@ -70,11 +70,23 @@ Item {
         delegate: Item {
             required property var modelData
             required property int index
-            width: label.implicitWidth + Units.gu(3)
+            // A short upright line before the first tab of a group.
+            readonly property real gap: modelData.groupStart ? Units.gu(1.5) : 0
+            width: label.implicitWidth + Units.gu(3) + gap
             height: tabs.height
+            Rectangle {
+                objectName: "tabGroupDivider"
+                visible: parent.gap > 0
+                x: (parent.gap - width) / 2
+                anchors.verticalCenter: parent.verticalCenter
+                width: 1
+                height: parent.height * 0.45
+                color: page.theme.divider
+            }
             Text {
                 id: label
                 anchors.centerIn: parent
+                anchors.horizontalCenterOffset: parent.gap / 2
                 text: modelData.title
                 color: index === page.currentIndex ? page.theme.text : page.theme.secondaryText
                 font.pixelSize: page.theme.fontMedium
@@ -82,7 +94,7 @@ Item {
             }
             Rectangle {
                 anchors.bottom: parent.bottom
-                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.horizontalCenter: label.horizontalCenter
                 width: label.implicitWidth
                 height: Units.gu(0.35)
                 radius: height / 2
@@ -91,6 +103,7 @@ Item {
             }
             MouseArea {
                 anchors.fill: parent
+                anchors.leftMargin: parent.gap
                 onClicked: page.category = modelData.id
             }
         }

@@ -90,19 +90,23 @@ WebOSWindow {
     property alias sheet: sheet
     readonly property alias pageStack: stack
 
-    // Radio while Internet Radio is signed in; Streaming only while the
+    // Home, Radio and Streaming first, then the library on the phone; Albums
+    // starts that second group (groupStart), which the tabs and the rail set
+    // apart. Radio while Internet Radio is signed in; Streaming only while the
     // streaming service runs and has a service signed in.
     readonly property bool hasRadio: streaming.provider("radio") !== null
     readonly property var categories: [
         { id: "home", title: "Home", icon: "home", view: "HomeView.qml" }
-    ].concat(hasRadio ? [{ id: "radio", title: "Radio", icon: "stream", view: "RadioView.qml" }] : []).concat([
-        { id: "albums", title: "Albums", icon: "album", view: "AlbumsView.qml" },
+    ].concat(hasRadio ? [{ id: "radio", title: "Radio", icon: "stream", view: "RadioView.qml" }] : [])
+     .concat(streaming.available ? [{ id: "streaming", title: "Streaming", icon: "stream", view: "StreamingView.qml" }] : [])
+     .concat([
+        { id: "albums", title: "Albums", icon: "album", view: "AlbumsView.qml", groupStart: true },
         { id: "artists", title: "Artists", icon: "artist", view: "ArtistsView.qml" },
         { id: "songs", title: "Songs", icon: "songs", view: "SongsView.qml" },
         { id: "genres", title: "Genres", icon: "genre", view: "GenresView.qml" },
         { id: "playlists", title: "Playlists", icon: "playlist", view: "PlaylistsView.qml" },
         { id: "folders", title: "Folders", icon: "folder", view: "FoldersView.qml" }
-    ]).concat(streaming.available ? [{ id: "streaming", title: "Streaming", icon: "stream", view: "StreamingView.qml" }] : [])
+    ])
 
     Theme {
         id: themeObject
