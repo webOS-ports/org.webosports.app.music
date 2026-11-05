@@ -38,10 +38,10 @@ Item {
         appWindow.library.revision;
         var out = [{ kind: "new" }, { kind: "header", name: "AUTOMATIC" }];
         Library.smartPlaylists.forEach(function(s) {
-            var count = appWindow.smartTracks(s.id).length;
-            if (s.stations && count === 0)
+            // Stations are in the Radio tab.
+            if (s.stations)
                 return;
-            out.push({ kind: "smart", id: s.id, name: s.name, count: count, stations: s.stations === true });
+            out.push({ kind: "smart", id: s.id, name: s.name, count: appWindow.smartTracks(s.id).length });
         });
         if (playlists.playlists.length > 0)
             out.push({ kind: "header", name: "YOUR PLAYLISTS" });
@@ -53,7 +53,7 @@ Item {
                        artUrl: first && typeof first === "object" ? (first.artUrl || "") : "" });
         });
         // The user's playlists on their streaming services, as they are there.
-        appWindow.streaming.servicePlaylists.forEach(function(s) {
+        appWindow.streaming.servicePlaylists.filter(function(s) { return s.provider !== "radio"; }).forEach(function(s) {
             out.push({ kind: "header", name: s.name.toUpperCase() });
             s.playlists.forEach(function(p) {
                 out.push({ kind: "service", provider: s.provider, playlist: p, name: p.name,
@@ -107,10 +107,9 @@ Item {
             title: modelData.kind === "new" ? "New Playlist" : modelData.name
             subtitle: modelData.kind === "new" ? ""
                       : modelData.kind === "service" ? Streaming.playlistDetail(modelData.provider, modelData.count, modelData.owner)
-                      : modelData.stations ? Streaming.countOf("radio", modelData.count)
                       : Library.plural(modelData.count, "song", "songs")
             icon: modelData.kind === "new" ? "playlist-add"
-                  : (modelData.id === "favorites" || modelData.id === "favoriteStations" ? "heart" : "playlist")
+                  : (modelData.id === "favorites" ? "heart" : "playlist")
             artPath: modelData.kind === "user" ? modelData.artPath : ""
             artAlbum: modelData.kind === "user" && modelData.artPath ? appWindow.library.trackFor(modelData.artPath).album : ""
             artUrl: modelData.kind === "user" || modelData.kind === "service" ? (modelData.artUrl || "") : ""

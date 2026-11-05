@@ -434,21 +434,36 @@ Item {
             };
             root.app.streaming.refresh();
             tryVerify(function() { return root.app.streaming.servicePlaylists.length === 1; });
+            // Radio has a tab of its own, after Home; Playlists has none of it.
+            compare(root.app.categories.map(function(c) { return c.id; }).slice(0, 2), ["home", "radio"]);
             var lp = root.app.pageStack.get(0);
             lp.category = "playlists";
-            wait(100);
+            tryVerify(function() { return lp.currentView !== null && lp.currentView.rows !== undefined && findByName(lp.currentView, "playlistsList") !== null; });
+            verify(!lp.currentView.rows.some(function(r) { return r.provider === "radio" || r.id === "favoriteStations"; }));
+            lp.category = "radio";
+            tryVerify(function() { return lp.currentView !== null && findByName(lp.currentView, "radioList") !== null; });
             var view = lp.currentView;
-            var list = findByName(view, "playlistsList");
-            var subtitles = {};
-            for (var i = 0; i < view.rows.length; i++) {
-                if (view.rows[i].kind !== "service")
-                    continue;
-                list.positionViewAtIndex(i, ListView.Contain);
-                tryVerify(function() { return list.itemAtIndex(i) !== null && list.itemAtIndex(i).item !== null; });
-                subtitles[view.rows[i].name] = list.itemAtIndex(i).item.subtitle;
-            }
-            compare(subtitles, { "Jazz": "Radio Browser", "Mine": "2 stations" });
-            var jazz = view.rows.filter(function(r) { return r.name === "Jazz"; })[0];
+            var list = findByName(view, "radioList");
+            var shown = function() {
+                var out = [];
+                for (var i = 0; i < view.rows.length; i++) {
+                    list.positionViewAtIndex(i, ListView.Contain);
+                    tryVerify(function() { return list.itemAtIndex(i) !== null && list.itemAtIndex(i).item !== null; });
+                    var it = list.itemAtIndex(i).item;
+                    out.push(view.rows[i].kind === "header" ? view.rows[i].name : it.title + "=" + it.subtitle);
+                }
+                return out;
+            };
+            compare(shown(), ["Search stations=Tens of thousands, from Radio Browser",
+                              "YOUR STATION LISTS", "Mine=2 stations", "RADIO BROWSER", "Jazz="]);
+            screenshot("radio");
+            // Search stations opens the radio search.
+            list.positionViewAtBeginning();
+            list.itemAtIndex(0).item.clicked();
+            settle();
+            compare(root.app.pageStack.depth, 2);
+            root.app.pageStack.pop(null);
+            var jazz = view.rows.filter(function(r) { return r.playlist && r.playlist.name === "Jazz"; })[0];
             root.app.openServicePlaylist("radio", jazz.playlist);
             settle();
             var page = root.app.pageStack.currentItem;
@@ -474,10 +489,10 @@ Item {
             compare(page.detail, "3 stations");
             verify(!more.visible);
             compare(page.moreLabel, "");
-            // A station favourited is in Favorite Stations, a streamed song
-            // in Favorites; Favorite Stations only shows with one in it.
+            // A station favourited is in the Radio tab's Favorite Stations,
+            // a streamed song in Favorites; they show once there is one.
             var before = root.app.smartTracks("favorites").length;
-            var hasStations = function() { return view.rows.some(function(r) { return r.id === "favoriteStations"; }); };
+            var hasStations = function() { return view.rows.some(function(r) { return r.kind === "header" && r.name === "FAVORITE STATIONS"; }); };
             verify(!hasStations());
             var station = page.songs[1];
             root.app.stats.setFavorite(station.path, true, Streaming.stored(station));
@@ -491,15 +506,15 @@ Item {
             compare(favs.length, before + 1);
             compare(favs[favs.length - 1].title, "Streamed");
             tryVerify(hasStations);
-            var at = -1;
-            for (var k = 0; k < view.rows.length; k++)
-                if (view.rows[k].id === "favoriteStations")
-                    at = k;
-            list.positionViewAtIndex(at, ListView.Contain);
-            tryVerify(function() { return list.itemAtIndex(at) !== null && list.itemAtIndex(at).item !== null; });
-            compare(list.itemAtIndex(at).item.title, "Favorite Stations");
-            compare(list.itemAtIndex(at).item.subtitle, "1 station");
             root.app.pageStack.pop(null);
+            compare(shown().slice(0, 3), ["Search stations=Tens of thousands, from Radio Browser",
+                                          "FAVORITE STATIONS", "Jazz 24=US"]);
+            // A favourite station plays on its own.
+            list.positionViewAtIndex(2, ListView.Contain);
+            list.itemAtIndex(2).item.clicked();
+            compare(root.app.player.queue.items.length, 1);
+            compare(root.app.player.current.path, station.path);
+            root.app.player.clearQueue();
             root.app.openSmartPlaylist("favoriteStations");
             settle();
             compare(root.app.pageStack.currentItem.detail, "1 station");
