@@ -164,15 +164,18 @@ Item {
         });
     }
 
-    /* done(tracks, error): a service playlist's tracks, as the app's tracks. */
-    function playlistTracks(providerId, playlistId, done) {
+    /* done(tracks, error, next): a service playlist's tracks, from offset
+     * (0 when left out); next is where the page after these starts, 0 when
+     * there is none. */
+    function playlistTracks(providerId, playlistId, done, offset) {
         transport("GET", baseUrl + "/provider/" + encodeURIComponent(providerId) + "/playlist?id="
-                  + encodeURIComponent(playlistId), null, function(code, data) {
+                  + encodeURIComponent(playlistId) + (offset > 0 ? "&offset=" + offset : ""), null, function(code, data) {
             if (code !== 200 || !data || !Array.isArray(data.tracks)) {
-                done([], (data && data.error) ? data.error : "The service did not answer.");
+                done([], (data && data.error) ? data.error : "The service did not answer.", 0);
                 return;
             }
-            done(data.tracks.map(function(t) { return Streaming.track(t, store.providerName(providerId)); }), "");
+            var next = data.more === true && data.next > (offset || 0) ? data.next : 0;
+            done(data.tracks.map(function(t) { return Streaming.track(t, store.providerName(providerId)); }), "", next);
         });
     }
 

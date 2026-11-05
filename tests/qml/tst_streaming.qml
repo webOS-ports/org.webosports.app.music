@@ -415,6 +415,42 @@ Item {
             root.answers = {};
         }
 
+        // A playlist a page at a time: offset asked for when given, next
+        // from the service while it says there is more, and only forward.
+        function test_playlist_pages() {
+            root.answers["GET /provider/radio/playlist"] = function(body, path) {
+                if (/offset=100/.test(path))
+                    return [200, { tracks: [{ id: "rb.b", provider: "radio", title: "B", path: "radio:rb.b" }], more: false, next: 0 }];
+                if (/offset=7/.test(path))
+                    return [200, { tracks: [], more: true, next: 3 }];
+                if (/offset=8/.test(path))
+                    return [200, { tracks: [], more: true }];
+                if (/offset=9/.test(path))
+                    return [200, { tracks: [], more: false, next: 200 }];
+                return [200, { tracks: [{ id: "rb.a", provider: "radio", title: "A", path: "radio:rb.a" }], more: true, next: 100 }];
+            };
+            var got = [];
+            var keep = function(tracks, error, next) { got.push([tracks.map(function(t) { return t.title; }).join(","), error, next]); };
+            store.playlistTracks("radio", "rb.top", keep);
+            store.playlistTracks("radio", "rb.top", keep, 100);
+            store.playlistTracks("radio", "rb.top", keep, 7);
+            store.playlistTracks("radio", "rb.top", keep, 8);
+            store.playlistTracks("radio", "rb.top", keep, 9);
+            tryCompare(got, "length", 5);
+            compare(got, [["A", "", 100], ["B", "", 0], ["", "", 0], ["", "", 0], ["", "", 0]]);
+            var asked = root.calls.filter(function(c) { return c.path.indexOf("/provider/radio/playlist") === 0; })
+                                  .map(function(c) { return c.path; });
+            compare(asked.slice(-5), ["/provider/radio/playlist?id=rb.top", "/provider/radio/playlist?id=rb.top&offset=100",
+                                      "/provider/radio/playlist?id=rb.top&offset=7", "/provider/radio/playlist?id=rb.top&offset=8",
+                                      "/provider/radio/playlist?id=rb.top&offset=9"]);
+            root.answers["GET /provider/radio/playlist"] = [502, { error: "down" }];
+            got = [];
+            store.playlistTracks("radio", "rb.top", keep, 100);
+            tryCompare(got, "length", 1);
+            compare(got[0], ["", "down", 0]);
+            delete root.answers["GET /provider/radio/playlist"];
+        }
+
         function test_unavailable_without_daemon() {
             store.refresh();
             tryCompare(store, "status", "unavailable");

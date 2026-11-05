@@ -35,6 +35,8 @@ Item {
     property var app: null
     // The album lists the fake library was asked for.
     property var libraryLists: []
+    // The fake radio service fails its second page.
+    property bool radioPageFails: false
 
     LunaService {
         id: bus
@@ -417,10 +419,17 @@ Item {
                 if (path === "/provider/radio/playlists")
                     return done(200, { playlists: [{ id: "rb.tag.jazz", name: "Jazz", owner: "Radio Browser", thumbnail: "", tracks: 0 },
                                                    { id: "l0", name: "Mine", owner: "mine.m3u", thumbnail: "", tracks: 2 }] });
+                var s3 = { id: "rb.s3", provider: "radio", title: "Jazz Radio", artist: "FR", album: "MP3", duration_ms: 0, path: "radio:rb.s3" };
+                var s2 = { id: "rb.s2", provider: "radio", title: "Jazz 24", artist: "US", album: "AAC", duration_ms: 0, path: "radio:rb.s2" };
+                if (path === "/provider/radio/playlist" && /[?&]offset=100(&|$)/.test(url))
+                    return root.radioPageFails ? done(502, { error: "Radio Browser did not answer." })
+                                               : done(200, { tracks: [s2, s3], more: false, next: 0 });
+                if (path === "/provider/radio/playlist" && /[?&]offset=/.test(url))
+                    return done(400, { error: "offset" });
                 if (path === "/provider/radio/playlist")
                     return done(200, { tracks: [
                         { id: "rb.s1", provider: "radio", title: "Jazz FM", artist: "UK", album: "MP3", duration_ms: 0, path: "radio:rb.s1" },
-                        { id: "rb.s2", provider: "radio", title: "Jazz 24", artist: "US", album: "AAC", duration_ms: 0, path: "radio:rb.s2" }] });
+                        s2], more: true, next: 100 });
                 done(404, { error: "no" });
             };
             root.app.streaming.refresh();
@@ -445,6 +454,26 @@ Item {
             var page = root.app.pageStack.currentItem;
             tryCompare(page, "loading", false);
             compare(page.detail, "2 stations");
+            // More stations: the next page, the one shown already not again;
+            // one that fails leaves the row to try again.
+            var more = findByName(page, "moreRow");
+            verify(more.visible);
+            compare(more.title, "More stations");
+            root.radioPageFails = true;
+            page.moreRequested();
+            tryCompare(page, "loadingMore", false);
+            compare(page.songs.length, 2);
+            verify(more.visible);
+            root.radioPageFails = false;
+            findByName(page, "trackList").positionViewAtEnd();
+            wait(50);
+            mouseClick(more);
+            verify(page.loadingMore || page.songs.length === 3);
+            tryCompare(page, "loadingMore", false);
+            compare(page.songs.map(function(t) { return t.title; }), ["Jazz FM", "Jazz 24", "Jazz Radio"]);
+            compare(page.detail, "3 stations");
+            verify(!more.visible);
+            compare(page.moreLabel, "");
             // Favourited from its menu, as a station is.
             var before = root.app.smartTracks("favorites").length;
             root.app.stats.setFavorite(page.songs[1].path, true, Streaming.stored(page.songs[1]));

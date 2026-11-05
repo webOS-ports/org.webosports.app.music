@@ -939,14 +939,30 @@ WebOSWindow {
         });
         page.objectName = "servicePlaylistPage";
         page.loading = true;
-        streaming.playlistTracks(providerId, playlist.id, function(tracks, error) {
+        var next = 0;
+        var shown = function(tracks, error, nextPage) {
             page.loading = false;
-            page.songs = tracks;
+            page.loadingMore = false;
+            // A list read by page can shift between pages: a track already
+            // shown is not shown twice.
+            var seen = {};
+            page.songs.forEach(function(t) { seen[t.path] = true; });
+            page.songs = page.songs.concat(tracks.filter(function(t) { return !seen[t.path]; }));
+            if (!error)
+                next = nextPage;
+            page.moreLabel = next > 0 ? (providerId === "radio" ? "More stations" : "More") : "";
             if (providerId === "radio")
-                page.detail = Streaming.countOf(providerId, tracks.length);
+                page.detail = Streaming.countOf(providerId, page.songs.length);
             if (error)
                 notify(error);
+        };
+        page.moreRequested.connect(function() {
+            if (next <= 0)
+                return;
+            page.loadingMore = true;
+            streaming.playlistTracks(providerId, playlist.id, shown, next);
         });
+        streaming.playlistTracks(providerId, playlist.id, shown);
     }
 
     function openPlaylistFile(path) {

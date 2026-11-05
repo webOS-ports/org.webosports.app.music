@@ -50,12 +50,17 @@ Item {
     // The songs are still on their way (a streaming service's playlist).
     property bool loading: false
     property bool editing: false
+    // A row after the songs that brings more of them ("More stations"),
+    // while there are more; "" for none. moreRequested asks for them.
+    property string moreLabel: ""
+    property bool loadingMore: false
     // Shown in the header's "…": [{ text, action }].
     property var actions: []
     readonly property var theme: appWindow.theme
     readonly property string playingPath: appWindow.player.current ? appWindow.player.current.path : ""
     readonly property bool canEdit: playlistId !== ""
 
+    signal moreRequested()
     signal moveRequested(int from, int to)
     signal removeRequested(int index)
 
@@ -189,7 +194,20 @@ Item {
             property int rowIndex: index
         }
 
-        footer: Item { width: 1; height: Units.gu(2) }
+        footer: Column {
+            width: list.width
+            ListRow {
+                objectName: "moreRow"
+                width: parent.width
+                visible: page.moreLabel !== "" && !page.loading
+                height: visible ? page.theme.rowHeight : 0
+                theme: page.theme
+                title: page.loadingMore ? "Loading…" : page.moreLabel
+                icon: "down"
+                onClicked: if (!page.loadingMore) page.moreRequested()
+            }
+            Item { width: 1; height: Units.gu(2) }
+        }
 
         // Drag to reorder: the row follows the finger; on release the song
         // moves to where it was dropped.
