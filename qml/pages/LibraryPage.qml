@@ -21,8 +21,8 @@ import LunaNext.Common 0.1
 import "../components"
 
 /*
- * The library: Albums, Artists, Songs, Genres, Playlists and Folders. On a
- * phone a row of tabs picks one (swipe the content sideways to step
+ * The library: Home, Albums, Artists, Songs, Genres, Playlists and
+ * Folders. On a phone a row of tabs picks one (swipe the content sideways to step
  * through them); on a tablet the rail at the window's left does, and the
  * tabs are not shown.
  */
@@ -31,7 +31,8 @@ Item {
 
     property string title: "Music"
     readonly property var theme: appWindow.theme
-    property string category: appWindow.prefs.lastCategory
+    // Home first, to carry on where the user left off.
+    property string category: "home"
     property bool showTabs: !appWindow.wide
 
     readonly property var categories: appWindow.categories
@@ -43,11 +44,14 @@ Item {
         return 0;
     }
 
-    onCategoryChanged: appWindow.prefs.lastCategory = category
-
     // The view currently shown, for the back gesture (Folders steps out of
     // a folder before the app goes back).
-    readonly property var currentView: views.itemAt(currentIndex) ? views.itemAt(currentIndex).item : null
+    // Asked again as each view is made (itemAt alone is not watched).
+    readonly property var currentView: {
+        _viewsLoaded;
+        return views.itemAt(currentIndex) ? views.itemAt(currentIndex).item : null;
+    }
+    property int _viewsLoaded: 0
 
     ListView {
         id: tabs
@@ -133,6 +137,7 @@ Item {
                 active: index === page.currentIndex || item !== null
                 visible: index === page.currentIndex
                 source: Qt.resolvedUrl("../views/" + modelData.view)
+                onLoaded: page._viewsLoaded++
             }
         }
     }

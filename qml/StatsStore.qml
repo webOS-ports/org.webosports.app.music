@@ -18,6 +18,8 @@ import QtQuick
 
 import LuneOS.Service 1.0
 
+import "js/Streaming.js" as Streaming
+
 /*
  * What the user did with each song - plays, skips, when last played, the
  * favourite heart, where a long track was left - in the app's own db8 kind,
@@ -25,9 +27,10 @@ import LuneOS.Service 1.0
  *
  *     { path, playCount, skipCount, lastPlayed (ms), favorite, bookmark (ms) }
  *
- * plus, for a favourite streamed track (a station, a Tidal song...), the
- * track as a playlist keeps it (track: Streaming.stored()), so Favorites
- * can show it without asking its service.
+ * plus, for a streamed track (a station, a Tidal song...) favourited or
+ * played, the track as a playlist keeps it (track: Streaming.stored()), so
+ * Favorites, Recently Played and Home can show it without asking its
+ * service.
  *
  * The media indexer's kinds are not the app's to write to, and a re-scan
  * would lose anything kept there.
@@ -129,6 +132,8 @@ Item {
         if (played) {
             r.playCount = (r.playCount || 0) + 1;
             r.lastPlayed = Date.now();
+            if (track.remote === true)
+                r.track = Streaming.stored(track);
             if (completed)
                 r.bookmark = 0;
         } else if (!completed && playedMs > 1000) {
@@ -160,6 +165,17 @@ Item {
     // Whether the record keeps its streamed track (the one of its path).
     function _keeps(r) {
         return !!r.track && typeof r.track === "object" && r.track.path === r.path;
+    }
+
+    /* The streamed tracks played, as kept, with when: [{ track, lastPlayed }]. */
+    function streamedPlayed() {
+        var out = [];
+        for (var path in byPath) {
+            var r = byPath[path];
+            if (r.lastPlayed > 0 && _keeps(r))
+                out.push({ track: r.track, lastPlayed: r.lastPlayed });
+        }
+        return out;
     }
 
     /* The favourite streamed tracks, as kept: by artist, then title. */

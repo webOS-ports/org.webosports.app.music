@@ -93,6 +93,7 @@ WebOSWindow {
     // Streaming only while the streaming service runs and has a service
     // signed in.
     readonly property var categories: [
+        { id: "home", title: "Home", icon: "home", view: "HomeView.qml" },
         { id: "albums", title: "Albums", icon: "album", view: "AlbumsView.qml" },
         { id: "artists", title: "Artists", icon: "artist", view: "ArtistsView.qml" },
         { id: "songs", title: "Songs", icon: "songs", view: "SongsView.qml" },
@@ -892,6 +893,13 @@ WebOSWindow {
         if (id === "favoriteStations")
             return stats.streamedFavorites().filter(isStation);
         var list = Library.smartPlaylist(id, library.lib.songs, stats.asMap(), Date.now(), 100);
+        if (id === "recentlyPlayed") {
+            // The library's and the streamed tracks, the last played first.
+            var when = function(t) { var r = stats.get(t.path); return r ? r.lastPlayed || 0 : 0; };
+            var all = list.map(function(t) { return { track: t, lastPlayed: when(t) }; }).concat(stats.streamedPlayed());
+            all.sort(function(a, b) { return b.lastPlayed - a.lastPlayed; });
+            return all.slice(0, 100).map(function(x) { return x.track; });
+        }
         // Favourite streamed songs, after the library's.
         return id === "favorites" ? list.concat(stats.streamedFavorites().filter(function(t) { return !isStation(t); })) : list;
     }

@@ -18,7 +18,8 @@ writing calls.
   sounds and the indexer's "Unknown ..." stand-ins left out, sorting,
   search, the automatic playlists, formatting, LRC parsing.
 - `tst_ui.qml`: the app itself against `fixtures/music` as the indexer would
-  have stored it: library, covers (embedded, folder.jpg above a disc folder,
+  have stored it: Home (what was left playing, the last played, favourite
+  stations and songs, playlists), library, covers (embedded, folder.jpg above a disc folder,
   none), every category, album page and playback, Now Playing (ReplayGain in
   every mode, lyrics, shuffle/repeat, favourite, cover tap regions), menus,
   queue, playlists (Rename, Delete and New Playlist through their

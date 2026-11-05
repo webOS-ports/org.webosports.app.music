@@ -516,6 +516,85 @@ Item {
             lp.category = "albums";
         }
 
+        // Home: what was left playing, the last played (the library's and
+        // streamed ones), the favourite stations and songs, the playlists;
+        // a station plays on its own, a song plays its list.
+        function test_19_home() {
+            var lp = root.app.pageStack.get(0);
+            root.app.player.clearQueue();
+            lp.category = "home";
+            tryVerify(function() { return lp.currentView !== null && lp.currentView.few !== undefined; });
+            var view = lp.currentView;
+            var songs = root.app.library.lib.songs;
+            var station = { path: "radio:rb.home", title: "Home FM", artist: "NL", album: "MP3", duration: 0, artUrl: "",
+                            provider: "radio", remote: true };
+            var streamed = { path: "tidal:home", title: "Streamed Home", artist: "Band", album: "B", duration: 200000,
+                             artUrl: "", provider: "tidal", remote: true };
+            // The fixtures are 3 s long, too short to count as played.
+            root.app.stats.trackFinished({ path: songs[2].path, duration: 200000 }, 200000, true);
+            wait(5);
+            root.app.stats.trackFinished(streamed, 200000, true);
+            wait(5);
+            root.app.stats.trackFinished(station, 300000, false);
+            root.app.stats.setFavorite(station.path, true, station);
+            // Favourited, never played: not among the played.
+            var unplayed = { path: "tidal:never", title: "Never", artist: "X", album: "Y", duration: 200000, artUrl: "",
+                             provider: "tidal", remote: true };
+            root.app.stats.setFavorite(unplayed.path, true, unplayed);
+            var names = function() { return view.rows.filter(function(r) { return r.kind === "header"; }).map(function(r) { return r.name; }); };
+            tryVerify(function() { return names().indexOf("FAVORITE STATIONS") >= 0; });
+            var heads = names();
+            verify(heads.indexOf("JUMP BACK IN") < 0);
+            compare(heads.slice(0, 2), ["RECENTLY PLAYED", "FAVORITE STATIONS"]);
+            var recent = root.app.smartTracks("recentlyPlayed");
+            compare(recent.slice(0, 3).map(function(t) { return t.path; }), [station.path, streamed.path, songs[2].path]);
+            verify(recent[0].remote);
+            verify(!recent.some(function(t) { return t.path === unplayed.path; }));
+            var rows = view.rows.filter(function(r) { return r.kind === "track" && r.list === "recentlyPlayed"; });
+            verify(rows.length > 0 && rows.length <= view.few);
+            screenshot("home");
+            // A station: on its own.
+            view.playFrom("recentlyPlayed", 0);
+            compare(root.app.player.queue.items.length, 1);
+            compare(root.app.player.current.path, station.path);
+            // A song: its list, without the stations.
+            view.playFrom("recentlyPlayed", 2);
+            compare(root.app.player.current.path, songs[2].path);
+            verify(root.app.player.queue.items.every(function(t) { return t.provider !== "radio"; }));
+            // Playing: nothing to jump back into.
+            tryVerify(function() { return root.app.player.playing; });
+            verify(names().indexOf("JUMP BACK IN") < 0);
+            // Left paused: Jump back in, at the top.
+            root.app.player.pause();
+            tryVerify(function() { return names()[0] === "JUMP BACK IN"; });
+            compare(view.rows[1].kind, "resume");
+            compare(view.rows[1].track.path, songs[2].path);
+            // More than a few: See all opens the list.
+            for (var i = 0; i < view.few + 1; i++)
+                root.app.stats.setFavorite(songs[i].path, true);
+            tryVerify(function() { return view.rows.some(function(r) { return r.kind === "all" && r.smart === "favorites"; }); });
+            compare(view.rows.filter(function(r) { return r.kind === "track" && r.list === "favorites"; }).length, view.few);
+            var list = findByName(view, "homeList");
+            var at = -1;
+            for (var k = 0; k < view.rows.length; k++)
+                if (view.rows[k].kind === "all" && view.rows[k].smart === "favorites")
+                    at = k;
+            list.positionViewAtIndex(at, ListView.Contain);
+            tryVerify(function() { return list.itemAtIndex(at) !== null && list.itemAtIndex(at).item !== null; });
+            compare(list.itemAtIndex(at).item.title, "See all");
+            list.itemAtIndex(at).item.clicked();
+            settle();
+            compare(root.app.pageStack.currentItem.objectName, "smartPlaylistPage");
+            compare(root.app.pageStack.currentItem.title, "Favorites");
+            root.app.pageStack.pop(null);
+            for (var j = 0; j < view.few + 1; j++)
+                root.app.stats.setFavorite(songs[j].path, false);
+            root.app.stats.setFavorite(station.path, false);
+            root.app.stats.setFavorite(unplayed.path, false);
+            root.app.player.clearQueue();
+            lp.category = "albums";
+        }
+
         // A service with a library of its own (a Subsonic server): its
         // newest albums and its artists, an artist's albums and songs, an
         // album's numbered tracks, and playing and queueing them.
@@ -887,6 +966,8 @@ Item {
         }
 
         function test_01_library_built() {
+            // The app opens on Home.
+            compare(root.app.pageStack.get(0).category, "home");
             var lib = root.app.library.lib;
             compare(lib.songs.length, 10);
             compare(lib.albums.length, 3);
