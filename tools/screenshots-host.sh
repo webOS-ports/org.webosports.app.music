@@ -7,14 +7,15 @@
 #
 # The host build is this project built for the host with -DBUILD_TESTING=ON
 # (it holds the plugin and musicapp-screens). Profiles are the stand-ins'
-# (test/imports/LunaNext/Common/SettingsStub.js): mindphone, q25, tp, n7...
+# (test/imports/LunaNext/Common/SettingsStub.js): by default mindphone, q25,
+# tp, n7 and radon (720x1600, a notch and rounded corners).
 set -e
 cd "$(dirname "$0")/.."
 SRC=$(pwd)
 BUILD=$(cd "${1:?usage: screenshots-host.sh <host build dir> [luneos-components] [profile...]}" && pwd)
 LC=$(cd "${2:-../luneos-components}" && pwd)
 shift; [ $# -gt 0 ] && shift
-PROFILES=${*:-mindphone q25 tp n7}
+PROFILES=${*:-mindphone q25 tp n7 radon}
 OUT=$SRC/build/test-output/screens
 mkdir -p "$OUT"
 CONF=$(mktemp -d)
