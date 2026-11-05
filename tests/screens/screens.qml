@@ -56,6 +56,39 @@ QtObject {
         ];
     }
 
+    // A music streaming service with one podcast, for the podcast screens.
+    function podcastEpisode(id, extra) {
+        var e = { id: "podcast:aaaaaaaaaaaa." + id, podcast: "aaaaaaaaaaaa", podcastTitle: "Science Hour",
+                  title: "Episode " + id + ": what the deep sea hides", published: Date.UTC(2026, 10, 4 - id, 12),
+                  duration_ms: 2700000, url: "https://x.example/" + id + ".mp3", type: "audio/mpeg", video: false,
+                  description: "Researchers on the creatures of the deep sea, and how they were found. With questions from listeners.",
+                  image: "", position_ms: 0, played: false, "new": false, lastPlayed: 0, download: { state: "none", progress: 0 } };
+        for (var k in extra)
+            e[k] = extra[k];
+        return e;
+    }
+    function podcastTransport(method, url, body, done) {
+        var path = url.replace(/^http:\/\/127\.0\.0\.1:8730/, "").replace(/\?.*$/, "");
+        var eps = [podcastEpisode(1, { "new": true }), podcastEpisode(2, { position_ms: 900000 }),
+                   podcastEpisode(3, { download: { state: "done", progress: 1 } }),
+                   podcastEpisode(4, { played: true }), podcastEpisode(5, { video: true })];
+        switch (method + " " + path) {
+        case "GET /podcasts":
+            return done(200, { podcasts: [{ id: "aaaaaaaaaaaa", url: "https://x.example/feed", title: "Science Hour",
+                                            author: "Public Radio", description: eps[0].description, image: "",
+                                            newCount: 1, episodeCount: 120, autoDownload: 1 },
+                                          { id: "bbbbbbbbbbbb", url: "https://y.example/feed", title: "Cooking Together",
+                                            author: "Two Cooks", image: "", newCount: 0, episodeCount: 48 }],
+                               refreshing: false, downloading: 0 });
+        case "GET /podcasts/settings": return done(200, { refreshHours: 6, wifiOnly: true, autoDownload: 0, keepPlayedDays: 7, notify: true });
+        case "GET /podcasts/new": return done(200, { episodes: [eps[0]] });
+        case "GET /podcasts/inprogress": return done(200, { episodes: [eps[1]] });
+        case "GET /podcasts/downloads": return done(200, { episodes: [eps[2]] });
+        case "GET /podcasts/episodes": return done(200, { podcast: {}, episodes: eps, more: true, next: 50 });
+        }
+        done(404, null);
+    }
+
     function album(title) {
         return app.library.lib.albums.filter(function(a) { return a.title === title; })[0];
     }
@@ -101,6 +134,17 @@ QtObject {
         ["lyrics", function() { app.findChild ? null : null; nowPlaying().showLyrics = true; }],
         ["search", function() { nowPlaying().showLyrics = false; app.closeNowPlaying(); app.openSearch(); app.pageStack.currentItem.text = "sun"; }],
         ["preferences", function() { app.openPreferences(); }],
+        ["podcasts", function() {
+            app.pageStack.pop(null);
+            app.streaming.transport = run.podcastTransport;
+            app.podcasts.refresh();
+            app.pageStack.get(0).category = "podcasts";
+        }],
+        ["podcast", function() { app.openPodcast({ id: "aaaaaaaaaaaa" }); }],
+        ["episode", function() { app.openEpisode(run.podcastEpisode(2, { position_ms: 900000 })); }],
+        ["episode-menu", function() { app.episodeMenu(run.podcastEpisode(3, { download: { state: "done" } })); }],
+        ["podcast-search", function() { app.sheet.hide(); app.pageStack.pop(null); app.openPodcastSearch(); }],
+        ["podcast-settings", function() { app.pageStack.pop(null); app.openPodcastSettings(); }],
         ["exhibition", function() { app.pageStack.pop(null); app.exhibitionWanted = true; }]
     ]
 

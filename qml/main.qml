@@ -31,6 +31,7 @@ import LuneOS.Components 1.0 as LC
 import "components"
 import "js/DashboardRule.js" as DashboardRule
 import "js/Library.js" as Library
+import "js/Podcasts.js" as Podcasts
 import "js/Queue.js" as Queue
 import "js/Streaming.js" as Streaming
 
@@ -83,6 +84,7 @@ WebOSWindow {
     property alias stats: stats
     property alias playlists: playlists
     property alias streaming: streaming
+    property alias podcasts: podcasts
     property alias lyricsLookup: lyricsLookup
     property alias artistLookup: artistLookup
     property alias artCache: artCache
@@ -90,14 +92,17 @@ WebOSWindow {
     property alias sheet: sheet
     readonly property alias pageStack: stack
 
-    // Home, Radio and Streaming first, then the library on the phone; Albums
-    // starts that second group (groupStart), which the tabs and the rail set
-    // apart. Radio while Internet Radio is signed in; Streaming only while the
-    // streaming service runs and has a service signed in.
+    // Home, Radio, Podcasts and Streaming first, then the library on the
+    // phone; Albums starts that second group (groupStart), which the tabs and
+    // the rail set apart. Radio while Internet Radio is signed in; Podcasts
+    // unless the streaming service has none (not running, or older);
+    // Streaming only while the service runs and has a service signed in.
     readonly property bool hasRadio: streaming.provider("radio") !== null
+    readonly property bool hasPodcasts: podcasts.status !== "unavailable"
     readonly property var categories: [
         { id: "home", title: "Home", icon: "home", view: "HomeView.qml" }
     ].concat(hasRadio ? [{ id: "radio", title: "Radio", icon: "stream", view: "RadioView.qml" }] : [])
+     .concat(hasPodcasts ? [{ id: "podcasts", title: "Podcasts", icon: "podcast", view: "PodcastsView.qml" }] : [])
      .concat(streaming.available ? [{ id: "streaming", title: "Streaming", icon: "stream", view: "StreamingView.qml" }] : [])
      .concat([
         { id: "albums", title: "Albums", icon: "album", view: "AlbumsView.qml", groupStart: true },
@@ -157,6 +162,12 @@ WebOSWindow {
         }
     }
 
+    PodcastStore {
+        id: podcasts
+        baseUrl: streaming.baseUrl
+        transport: streaming.transport
+    }
+
     LyricsLookup {
         id: lyricsLookup
         enabled: preferences.lyricsOnline
@@ -189,20 +200,44 @@ WebOSWindow {
         preventClipping: preferences.preventClipping
         crossfadeMs: preferences.crossfade * 1000
         gainLookup: function(path) { return library.gainTags(path); }
-        urlResolver: function(track, done, format) { streaming.resolve(track, done, format); }
+        urlResolver: function(track, done, format) {
+            if (Podcasts.isEpisode(track.path))
+                podcasts.resolve(track, function(url, error) { done(url, error, null); });
+            else
+                streaming.resolve(track, done, format);
+        }
         streamingTransport: streaming.transport
+        // An episode resumes where the podcast service says it was left,
+        // whatever the preference: that is what podcasts do.
         resumeLookup: function(track) {
+            if (Podcasts.isEpisode(track.path))
+                return podcasts.positionOf(track.path);
             return preferences.resumeLongTracks && Library.isLongForm(track) ? stats.bookmarkOf(track.path) : 0;
         }
         onFinished: function(track, playedMs, completed) {
             stats.trackFinished(track, playedMs, completed);
+            if (completed && Podcasts.isEpisode(track.path)) {
+                appWindow._episodeDone = track.path;
+                podcasts.setState(track.path, { played: true });
+            }
             appWindow.saveQueueSoon();
         }
         onBookmark: function(track, positionMs) {
+            if (Podcasts.isEpisode(track.path)) {
+                // The bookmark that comes after an episode ended would
+                // make it unfinished again.
+                if (appWindow._episodeDone !== track.path)
+                    podcasts.setState(track.path, { position_ms: Math.round(positionMs) });
+                return;
+            }
             if (preferences.resumeLongTracks && Library.isLongForm(track))
                 stats.setBookmark(track.path, positionMs);
         }
-        onStarted: appWindow.saveQueueSoon()
+        onStarted: {
+            if (player.current && appWindow._episodeDone === player.current.path)
+                appWindow._episodeDone = "";
+            appWindow.saveQueueSoon();
+        }
         // One banner for a run of unplayable files (a format the device has
         // no decoder for fails every time), not one per file.
         onFailed: function(track, reason) {
@@ -240,6 +275,8 @@ WebOSWindow {
     }
 
     property bool queueRestored: false
+    // The episode that just played to its end (see onBookmark).
+    property string _episodeDone: ""
     property bool failureShown: false
 
     function restoreQueue() {
@@ -271,6 +308,7 @@ WebOSWindow {
         stats.load();
         playlists.load();
         streaming.refresh();
+        podcasts.refresh();
     }
 
     Component.onDestruction: {
@@ -490,6 +528,17 @@ WebOSWindow {
             openPlaylistFile(path);
             return;
         }
+        // A list of podcasts from another app (Files opens .opml here).
+        if (/\.opml$/i.test(path)) {
+            sheet.show("Import podcasts?", [
+                { label: "Subscribe to Them All", action: function() {
+                    podcasts.importOpml({ path: path }, function(result, error) {
+                        appWindow.notify(result ? Podcasts.importSummary(result) : (error || "The list cannot be imported."));
+                    });
+                } }
+            ], Library.fileName(path));
+            return;
+        }
         if (!files.exists(path)) {
             notify("Cannot find " + Library.fileName(path) + ".");
             return;
@@ -534,6 +583,7 @@ WebOSWindow {
         cardSeen = true;
         dashboardDismissed = false;
         streaming.refresh();
+        podcasts.refresh();
     }
     property bool cardSeen: false
     property bool dashboardDismissed: false
@@ -1080,6 +1130,132 @@ WebOSWindow {
         page.objectName = "streamSearchPage";
         if (text)
             page.text = text;
+    }
+
+    // --- podcasts --------------------------------------------------------------
+
+    /* A podcast: one of the user's ({ id }), or one found ({ url, title...
+     * }), which can be subscribed to from its page. */
+    function openPodcast(p) {
+        var page = push("pages/PodcastPage.qml", { podcastId: p.id || "", feedUrl: p.url || "", info: p });
+        page.objectName = "podcastPage";
+    }
+
+    function openPodcastSearch() {
+        var page = push("pages/PodcastSearchPage.qml");
+        page.objectName = "podcastSearchPage";
+    }
+
+    function openPodcastSettings() {
+        var page = push("pages/PodcastSettingsPage.qml");
+        page.objectName = "podcastSettingsPage";
+    }
+
+    /* A list of episodes: these, or what the service lists under live
+     * ("downloads", "new", "inprogress"), kept up to date. */
+    function openEpisodeList(title, episodes, live) {
+        var page = push("pages/EpisodeListPage.qml", { title: title, fixed: episodes || [], live: live || "" });
+        page.objectName = "episodeListPage";
+    }
+
+    /* What can be done with one of the user's podcasts. */
+    function podcastMenu(p) {
+        if (!p)
+            return;
+        var choices = [
+            { label: "Look for New Episodes", action: function() { podcasts.refreshFeeds(p.id); } },
+            { label: "Mark All as Played", action: function() { podcasts.markAll(p.id, { played: true }); } }
+        ];
+        if (p.newCount > 0)
+            choices.push({ label: "Clear New", action: function() { podcasts.markAll(p.id, { "new": false }); } });
+        choices.push({ label: "Download Automatically…", action: function() { appWindow.chooseAutoDownload(p); } });
+        choices.push({ label: "Unsubscribe", destructive: true, action: function() { appWindow.confirmUnsubscribe(p); } });
+        sheet.show(p.title, choices, Podcasts.podcastDetail(p));
+    }
+
+    function chooseAutoDownload(p) {
+        sheet.show("Download automatically", Podcasts.autoDownloadChoices.map(function(n) {
+            return { label: Podcasts.autoDownloadLabel(n), checked: (p.autoDownload || 0) === n,
+                     action: function() { podcasts.setAutoDownload(p.id, n); } };
+        }), p.title);
+    }
+
+    function confirmUnsubscribe(p, after) {
+        sheet.show("Unsubscribe from " + p.title + "?", [
+            { label: "Unsubscribe", destructive: true, action: function() {
+                podcasts.unsubscribe(p.id, false, after);
+            } },
+            { label: "Unsubscribe and Delete Downloads", destructive: true, action: function() {
+                podcasts.unsubscribe(p.id, true, after);
+            } }
+        ], "");
+    }
+
+    function openEpisode(e) {
+        var page = push("pages/EpisodePage.qml", { episode: e });
+        page.objectName = "episodePage";
+    }
+
+    /* Plays episodes[index] and the audio ones after it; a video episode
+     * plays in Videos, from where it was left. */
+    function playEpisode(episodes, index) {
+        var e = episodes[index];
+        if (!e)
+            return;
+        if (e.video) {
+            playVideoEpisode(e);
+            return;
+        }
+        var rest = episodes.slice(index).filter(function(x) { return !x.video; });
+        player.playTracks(Podcasts.tracks(rest), 0, false);
+    }
+
+    function playVideoEpisode(e) {
+        podcasts.resolve({ path: e.id }, function(url, error) {
+            if (!url) {
+                notify(error);
+                return;
+            }
+            podcasts.setState(e.id, { position_ms: Math.max(1, e.position_ms || 0) });
+            if (player.playing)
+                player.pause();
+            launchApp("org.webosports.app.videoplayer",
+                      { stream: { url: url, title: e.title, key: e.id }, position: e.position_ms > 0 ? e.position_ms : 0 },
+                      "Videos cannot be opened.");
+        });
+    }
+
+    // function(appId, params, failureText): another app opened; the tests
+    // replace it.
+    property var launchApp: function(id, params, failureText) {
+        service.call("luna://com.webos.service.applicationManager/launch", JSON.stringify({ id: id, params: params }),
+                     function() {}, function() { if (failureText) appWindow.notify(failureText); });
+    }
+
+    /* What can be done with an episode. */
+    function episodeMenu(e) {
+        if (!e)
+            return;
+        var d = (e.download || {}).state || "none";
+        var choices = [];
+        if (!e.video) {
+            choices.push({ label: "Play Next", action: function() { player.playNext([Podcasts.track(e)]); appWindow.notify("Plays next."); } });
+            choices.push({ label: "Add to Queue", action: function() { player.enqueue([Podcasts.track(e)]); appWindow.notify("Added to the queue."); } });
+        }
+        if (d === "none" || d === "failed")
+            choices.push({ label: "Download", action: function() {
+                podcasts.download(e.id, function(ep, error) { if (error) appWindow.notify(error); });
+            } });
+        else if (d === "queued" || d === "downloading")
+            choices.push({ label: "Stop Downloading", action: function() { podcasts.cancelDownload(e.id); } });
+        else
+            choices.push({ label: "Delete Download", destructive: true, action: function() { podcasts.deleteDownload(e.id); } });
+        choices.push(e.played ? { label: "Mark as Not Played", action: function() { podcasts.setState(e.id, { played: false }); } }
+                              : { label: "Mark as Played", action: function() { podcasts.setState(e.id, { played: true }); } });
+        choices.push({ label: "Episode Details", action: function() { appWindow.openEpisode(e); } });
+        if (e.podcast)
+            choices.push({ label: "Go to Podcast", action: function() { appWindow.openPodcast({ id: e.podcast }); } });
+        sheet.show(e.title, choices, e.podcastTitle || "");
     }
 
     function openQueue() {

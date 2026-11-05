@@ -42,10 +42,19 @@ Item {
         appWindow.stats.revision;
         appWindow.playlists.revision;
         appWindow.library.revision;
+        appWindow.podcasts.revision;
         var out = [];
         if (current && !playing) {
             out.push({ kind: "header", name: "JUMP BACK IN" });
             out.push({ kind: "resume", track: current });
+        }
+        // Episodes started, but not the one Jump Back In already has.
+        var started = appWindow.podcasts.inProgress.filter(function(e) { return !current || e.id !== current.path; });
+        if (started.length > 0) {
+            out.push({ kind: "header", name: "CONTINUE LISTENING" });
+            started.slice(0, few).forEach(function(e, i) { out.push({ kind: "episode", episode: e, list: started, index: i }); });
+            if (started.length > few)
+                out.push({ kind: "all", episodes: "inprogress" });
         }
         section(out, "RECENTLY PLAYED", "recentlyPlayed", appWindow.smartTracks("recentlyPlayed"));
         section(out, "FAVORITE STATIONS", "favoriteStations", appWindow.smartTracks("favoriteStations"));
@@ -83,17 +92,19 @@ Item {
         var t = tracks[index];
         if (!t)
             return;
-        if (t.provider === "radio") {
+        if (t.provider === "radio" || t.provider === "podcast") {
             appWindow.player.playTracks([t], 0, false);
             return;
         }
-        var songs = tracks.filter(function(x) { return x.provider !== "radio"; });
+        var songs = tracks.filter(function(x) { return x.provider !== "radio" && x.provider !== "podcast"; });
         appWindow.player.playTracks(songs, songs.indexOf(t), false);
     }
 
     function detailOf(t) {
         if (t.provider === "radio")
             return t.artist || "Internet Radio";
+        if (t.provider === "podcast")
+            return t.artist || "Podcast";
         return [t.artist, t.remote ? appWindow.streaming.providerName(t.provider) : ""]
             .filter(function(x) { return x; }).join(" · ");
     }
@@ -107,7 +118,7 @@ Item {
         delegate: Loader {
             required property var modelData
             width: list.width
-            sourceComponent: modelData.kind === "header" ? headerRow : itemRow
+            sourceComponent: modelData.kind === "header" ? headerRow : modelData.kind === "episode" ? episodeRow : itemRow
             property var rowData: modelData
         }
         footer: Item { width: 1; height: Units.gu(2) }
@@ -133,6 +144,19 @@ Item {
     }
 
     Component {
+        id: episodeRow
+        EpisodeRow {
+            readonly property var rowData: parent ? parent.rowData : ({})
+            width: list.width
+            theme: view.theme
+            episode: rowData.episode || ({})
+            withPodcast: true
+            onClicked: appWindow.playEpisode(rowData.list, rowData.index)
+            onMenuRequested: appWindow.episodeMenu(episode)
+        }
+    }
+
+    Component {
         id: itemRow
         ListRow {
             readonly property var modelData: parent ? parent.rowData : ({})
@@ -148,7 +172,8 @@ Item {
             icon: modelData.kind === "all" ? "more"
                   : modelData.kind === "playlist" ? "playlist"
                   : modelData.kind === "resume" ? "play"
-                  : track && track.provider === "radio" ? "stream" : "note"
+                  : track && track.provider === "radio" ? "stream"
+                  : track && track.provider === "podcast" ? "podcast" : "note"
             artPath: track && !track.remote ? track.path : modelData.kind === "playlist" ? modelData.artPath : ""
             artAlbum: track && !track.remote ? (track.album || "") : ""
             artUrl: track && track.remote ? (track.artUrl || "") : modelData.kind === "playlist" ? modelData.artUrl : ""
@@ -162,6 +187,8 @@ Item {
                     appWindow.openPlaylist(modelData.id);
                 else if (modelData.smart)
                     appWindow.openSmartPlaylist(modelData.smart);
+                else if (modelData.episodes)
+                    appWindow.openEpisodeList("Continue Listening", null, modelData.episodes);
                 else
                     appWindow.pageStack.get(0).category = modelData.category;
             }

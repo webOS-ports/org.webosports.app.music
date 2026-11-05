@@ -843,6 +843,179 @@ Item {
             tryCompare(lib, "status", "ready", 5000);
         }
 
+        // Podcasts, against a fake music streaming service: the tab after
+        // Radio with what was started, the new episodes and the podcasts; a
+        // podcast's page and its next page of episodes; an episode plays from
+        // where it was left and tells the service where it is and that it
+        // ended; a video episode opens in Videos; Now Playing skips 15 s back
+        // and 30 s on; a feed address typed in Find Podcasts opens its feed.
+        function test_19b_podcasts() {
+            var fixture = root.fixtures + "/Ana Ray/Red Sky/01 Red Song 1.mp3";
+            var ep = function(id, extra) {
+                var e = { id: "podcast:aaaaaaaaaaaa." + id, podcast: "aaaaaaaaaaaa", podcastTitle: "The Show", title: "Episode " + id,
+                          published: Date.UTC(2026, 10, 3, 12), duration_ms: 3600000, url: "https://x.example/" + id + ".mp3",
+                          type: "audio/mpeg", video: false, description: "About episode " + id, image: "",
+                          position_ms: 0, played: false, "new": false, lastPlayed: 0, download: { state: "none", progress: 0 } };
+                for (var k in extra)
+                    e[k] = extra[k];
+                return e;
+            };
+            var started = ep("2", { position_ms: 1500 });
+            var fresh = ep("3", { "new": true });
+            var video = ep("4", { video: true, type: "video/mp4", position_ms: 7000 });
+            var states = [];
+            var launched = null;
+            var oldLaunch = root.app.launchApp;
+            root.app.launchApp = function(id, params) { launched = { id: id, params: params }; };
+            root.app.streaming.transport = function(method, url, body, done) {
+                var path = url.replace(/^http:\/\/127\.0\.0\.1:8730/, "").replace(/\?.*$/, "");
+                switch (method + " " + path) {
+                case "GET /providers": return done(200, { providers: [] });
+                case "GET /podcasts":
+                    return done(200, { podcasts: [{ id: "aaaaaaaaaaaa", url: "https://x.example/feed", title: "The Show", author: "Someone",
+                                                    description: "A show.", image: "", newCount: 1, episodeCount: 60, autoDownload: 0 }],
+                                       refreshing: false, downloading: 0 });
+                case "GET /podcasts/settings": return done(200, { refreshHours: 6, wifiOnly: true, autoDownload: 0, keepPlayedDays: 7, notify: true });
+                case "GET /podcasts/new": return done(200, { episodes: [fresh] });
+                case "GET /podcasts/inprogress": return done(200, { episodes: [started] });
+                case "GET /podcasts/downloads": return done(200, { episodes: [] });
+                case "GET /podcasts/episodes":
+                    if (/[?&]offset=50(&|$)/.test(url))
+                        return done(200, { episodes: [ep("9")], more: false, next: 0 });
+                    return done(200, { podcast: {}, episodes: [fresh, started, video], more: true, next: 50 });
+                case "POST /podcasts/resolve": return done(200, { url: "file://" + fixture, video: body.trackId === "aaaaaaaaaaaa.4" });
+                case "POST /podcasts/state": states.push(body); return done(200, { episode: ep(body.id.split(".")[1], body) });
+                case "POST /podcasts/preview":
+                    return done(200, { podcast: { title: "Found", url: body.url, author: "Them" }, episodes: [ep("p1", { podcast: "", podcastTitle: "Found" })] });
+                }
+                done(404, { error: "no" });
+            };
+            root.app.streaming.refresh();
+            root.app.podcasts.refresh();
+            tryCompare(root.app.podcasts, "status", "ready");
+            var ids = root.app.categories.map(function(c) { return c.id; });
+            compare(ids.slice(0, 2), ["home", "podcasts"]);
+            var lp = root.app.pageStack.get(0);
+            lp.category = "podcasts";
+            tryVerify(function() { return lp.currentView !== null && findByName(lp.currentView, "podcastsList") !== null; });
+            var view = lp.currentView;
+            tryVerify(function() { return view.rows.some(function(r) { return r.kind === "podcast"; }); });
+            compare(view.rows.map(function(r) { return r.kind === "header" ? r.name : r.kind; }),
+                    ["search", "CONTINUE LISTENING", "episode", "NEW EPISODES", "episode", "YOUR PODCASTS", "podcast",
+                     "MORE", "refresh", "settings"]);
+            screenshot("podcasts");
+            // Home has the episode started too.
+            lp.category = "home";
+            tryVerify(function() { return lp.currentView !== null && lp.currentView.few !== undefined; });
+            tryVerify(function() { return lp.currentView.rows.some(function(r) { return r.kind === "episode" && r.episode.id === started.id; }); });
+            lp.category = "podcasts";
+            // The podcast's page: its episodes, More episodes for the next page.
+            root.app.openPodcast({ id: "aaaaaaaaaaaa" });
+            settle();
+            var page = root.app.pageStack.currentItem;
+            compare(page.objectName, "podcastPage");
+            tryCompare(page, "loading", false);
+            verify(page.subscribed);
+            compare(page.episodes.length, 3);
+            compare(findByName(page, "podcastTitle").text, "The Show");
+            verify(!findByName(page, "subscribeButton").visible);
+            verify(findByName(page, "moreEpisodesRow").visible);
+            screenshot("podcast");
+            page.more();
+            tryCompare(page, "loadingMore", false);
+            compare(page.episodes.length, 4);
+            verify(!findByName(page, "moreEpisodesRow").visible);
+            // An episode plays from where it was left, and the audio ones
+            // after it; the video one is left out of the queue.
+            root.app.playEpisode(page.episodes, 0);
+            compare(root.app.player.queue.items.length, 3);
+            compare(root.app.player.current.path, fresh.id);
+            compare(root.app.player.current.genre, "Podcast");
+            root.app.player.clearQueue();
+            root.app.playEpisode(page.episodes, 1);
+            tryVerify(function() { return root.app.player.playing; }, 5000);
+            compare(root.app.player.current.path, started.id);
+            compare(root.app.player.resumeLookup(root.app.player.current), 1500);
+            // Where it is goes to the service; once it ended, that it was played,
+            // and no position after it.
+            root.app.player.bookmark(root.app.player.current, 2500);
+            compare(states[states.length - 1].id, started.id);
+            compare(states[states.length - 1].position_ms, 2500);
+            root.app.player.finished(root.app.player.current, 3000, true);
+            compare(states[states.length - 1].played, true);
+            var n = states.length;
+            root.app.player.bookmark(root.app.player.current, 2990);
+            compare(states.length, n);
+            // Now Playing: back 15 s and on 30 s instead of shuffle and repeat.
+            root.app.openNowPlaying();
+            var np = findByName(root.app.contentItem, "nowPlaying");
+            tryCompare(np, "y", 0, 3000);
+            wait(300);
+            verify(findByName(np, "skipBackButton").visible);
+            verify(findByName(np, "skipForwardButton").visible);
+            verify(!findByName(np, "shuffleButton").visible);
+            verify(!findByName(np, "repeatButton").visible);
+            screenshot("podcast-now-playing");
+            // Paused: the 3 s fixture would end by itself meanwhile.
+            root.app.player.pause();
+            root.app.player.seek(2000);
+            tryVerify(function() { return Math.abs(root.app.player.position - 2000) < 300; });
+            findByName(np, "skipBackButton").clicked();
+            tryVerify(function() { return root.app.player.position < 300; });
+            wait(300);
+            verify(root.app.player.position < 300);
+            root.app.closeNowPlaying();
+            root.app.player.pause();
+            root.app.player.clearQueue();
+            // A video episode: Videos, from where it was left.
+            root.app.playEpisode(page.episodes, 2);
+            tryVerify(function() { return launched !== null; });
+            compare(launched.id, "org.webosports.app.videoplayer");
+            compare(launched.params.stream.url, "file://" + fixture);
+            compare(launched.params.stream.title, "Episode 4");
+            compare(launched.params.position, 7000);
+            compare(root.app.player.queue.items.length, 0);
+            // The episode's page.
+            root.app.openEpisode(fresh);
+            settle();
+            compare(root.app.pageStack.currentItem.objectName, "episodePage");
+            compare(findByName(root.app.pageStack.currentItem, "episodeDescription").text, "About episode 3");
+            compare(findByName(root.app.pageStack.currentItem, "episodePlayButton").text, "Play");
+            screenshot("podcast-episode");
+            root.app.pageStack.pop(null);
+            // Find Podcasts: a feed's address opens that feed, to subscribe to.
+            root.app.openPodcastSearch();
+            settle();
+            var search = root.app.pageStack.currentItem;
+            search.text = "feeds.example.org/found.xml";
+            compare(search.feedAddress, "https://feeds.example.org/found.xml");
+            var results = findByName(search, "podcastResults");
+            tryVerify(function() { return results.itemAtIndex(0) !== null; });
+            compare(results.itemAtIndex(0).title, "Open this feed");
+            results.itemAtIndex(0).clicked();
+            settle();
+            page = root.app.pageStack.currentItem;
+            compare(page.objectName, "podcastPage");
+            tryCompare(page, "loading", false);
+            verify(!page.subscribed);
+            verify(findByName(page, "subscribeButton").visible);
+            compare(findByName(page, "podcastTitle").text, "Found");
+            compare(page.episodes.length, 1);
+            root.app.pageStack.pop(null);
+            // The settings.
+            root.app.openPodcastSettings();
+            settle();
+            compare(root.app.pageStack.currentItem.objectName, "podcastSettingsPage");
+            screenshot("podcast-settings");
+            root.app.pageStack.pop(null);
+            root.app.launchApp = oldLaunch;
+            root.app.streaming.transport = function(method, url, body, done) { done(404, null); };
+            root.app.streaming.refresh();
+            root.app.podcasts.refresh();
+            tryCompare(root.app.podcasts, "status", "unavailable");
+            lp.category = "albums";
+        }
+
         // The dashboard swiped away: dismissed (main.qml pauses, which
         // stops Spotify in librespot); not before it has shown.
         function test_20_dashboard_dismissed() {

@@ -57,6 +57,21 @@ writing calls.
   A Jellyfin, Emby or Plex server signed in in Videos counts as signed in
   here (`test_signed_in_through_videos`), only those three and only through
   their own kind of account; mutation-checked 2026-11-04.
+- `tst_podcasts.qml`: `qml/js/Podcasts.js` (an episode as a track, the
+  line under it - date, time left, played, download - podcasts' and the
+  downloads' lines, a feed address in what was typed, the settings' labels
+  and the import's summary) and PodcastStore against a fake music
+  streaming service: unavailable without it, its lists, where each episode
+  was left (known at once when it changes), asking again while it
+  refreshes or downloads and not after, and every call's route and body.
+- `tst_ui.qml` `test_19b_podcasts`: the Podcasts tab and its rows, Home's
+  Continue Listening, a podcast's page and its next page, an episode
+  playing from where it was left with the audio ones after it, its position
+  and its end told to the service (and no position after the end), 15 s
+  back and 30 s on in Now Playing, a video episode opened in Videos, an
+  episode's page, a feed address in Find Podcasts opening that feed to
+  subscribe, and the settings page; mutation-checked 2026-11-05, 4 of 4
+  caught.
 - `tst_resume.qml`: Player playing on after the sound server went away,
   which the app sees only as the engine going to Stopped (here stopped
   behind Player's back): again from where it was, later and later, five
