@@ -173,8 +173,11 @@ function formats(reply) {
  * Accounts (Music's own, or for a media server Videos'), plus the ones
  * that need none. accountTemplateIds null (Accounts could not be asked)
  * trusts the daemon's list. By name.
+ *
+ * icons, { templateId: the account's icon file }, gives each service the
+ * icon of its account ("" for one without, as YouTube).
  */
-function signedIn(daemonProviders, accountTemplateIds) {
+function signedIn(daemonProviders, accountTemplateIds, icons) {
     var out = (daemonProviders || []).filter(function(p) {
         if (!p || !p.id)
             return false;
@@ -183,9 +186,37 @@ function signedIn(daemonProviders, accountTemplateIds) {
         if (accountTemplateIds.indexOf(accountTemplatePrefix + p.id) >= 0)
             return true;
         return videoAccount.indexOf(p.id) >= 0 && accountTemplateIds.indexOf(videoAccountPrefix + p.id) >= 0;
-    }).map(function(p) { return { id: p.id, name: p.name || displayName(p.id), browse: p.browse === true }; });
+    }).map(function(p) {
+        return { id: p.id, name: p.name || displayName(p.id), browse: p.browse === true, icon: _iconOf(p.id, icons) };
+    });
     out.sort(function(a, b) { return a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1; });
     return out;
+}
+
+/*
+ * What listAccounts answered, as { ids: [templateId], icons: { templateId:
+ * its icon file } } of the accounts not being deleted; null when it gave no
+ * list.
+ */
+function accountsFrom(reply) {
+    if (!reply || reply.returnValue === false || !Array.isArray(reply.results))
+        return null;
+    var live = reply.results.filter(function(a) { return a && !a.beingDeleted; });
+    var icons = {};
+    live.forEach(function(a) {
+        if (a.icon && typeof a.icon.loc_48x48 === "string" && !icons[a.templateId])
+            icons[a.templateId] = a.icon.loc_48x48;
+    });
+    return { ids: live.map(function(a) { return a.templateId; }), icons: icons };
+}
+
+function _iconOf(id, icons) {
+    if (!icons)
+        return "";
+    var file = icons[accountTemplatePrefix + id];
+    if (!file && videoAccount.indexOf(id) >= 0)
+        file = icons[videoAccountPrefix + id];
+    return typeof file === "string" && file.charAt(0) === "/" ? "file://" + file : "";
 }
 
 /* What a playlist keeps of a track: a file's path, or a streamed track's

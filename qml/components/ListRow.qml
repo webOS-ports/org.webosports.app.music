@@ -34,6 +34,9 @@ Item {
     property string artAlbum: ""
     property string artUrl: ""
     property string icon: ""
+    // An image to show as it is, on no tile (a service's own icon), in
+    // place of a cover; the icon while it is not there.
+    property string iconUrl: ""
     property bool round: false
     property bool showMenu: false
 
@@ -65,7 +68,9 @@ Item {
         radius: row.round ? width / 2 : Math.max(2, width / 40)
         path: row.artPath
         album: row.artAlbum
-        artUrl: row.artUrl
+        artUrl: row.iconUrl !== "" ? row.iconUrl : row.artUrl
+        color: row.iconUrl !== "" && hasArt ? "transparent" : (onLight ? "#c4c4c4" : "#2b2b2b")
+        fillMode: row.iconUrl !== "" ? Image.PreserveAspectFit : Image.PreserveAspectCrop
         placeholderIcon: row.icon !== "" ? row.icon : "note"
     }
 

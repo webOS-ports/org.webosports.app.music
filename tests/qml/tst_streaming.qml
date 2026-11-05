@@ -216,6 +216,49 @@ Item {
 
         // A Subsonic song says where it sits on its album; one that says
         // nothing, or nonsense, sits nowhere.
+        // Each service shows its account's icon: Music's own account first,
+        // Videos' for a media server only; none without an account.
+        function test_signed_in_icons() {
+            var daemon = [{ id: "jellyfin" }, { id: "subsonic" }, { id: "tidal" }, { id: "youtube" }, { id: "plex" }];
+            var accounts = ["org.webosports.video.jellyfin", "org.webosports.app.music.subsonic",
+                            "org.webosports.video.tidal", "org.webosports.app.music.plex", "org.webosports.video.plex"];
+            var icons = {
+                "org.webosports.video.jellyfin": "/usr/palm/public/accounts/org.webosports.video.jellyfin/images/jellyfin-48x48.png",
+                "org.webosports.app.music.subsonic": "/a/subsonic.png",
+                "org.webosports.video.tidal": "/a/tidal.png",
+                "org.webosports.app.music.plex": "/a/music-plex.png",
+                "org.webosports.video.plex": "/a/video-plex.png"
+            };
+            compare(Streaming.signedIn(daemon, accounts, icons).map(function(p) { return p.id + "=" + p.icon; }),
+                    ["jellyfin=file:///usr/palm/public/accounts/org.webosports.video.jellyfin/images/jellyfin-48x48.png",
+                     "plex=file:///a/music-plex.png", "subsonic=file:///a/subsonic.png", "youtube="]);
+            // Only a file's own path; nothing given, nothing shown.
+            compare(Streaming.signedIn([{ id: "subsonic" }], accounts, { "org.webosports.app.music.subsonic": "images/s.png" })[0].icon, "");
+            compare(Streaming.signedIn([{ id: "subsonic" }], accounts)[0].icon, "");
+            // A service of Music's own takes no icon of a Videos account.
+            compare(Streaming.signedIn([{ id: "tidal" }], ["org.webosports.app.music.tidal"], icons)[0].icon, "");
+        }
+
+        // listAccounts' answer: the accounts not being deleted, with the
+        // first 48x48 icon file of each kind; no list, null.
+        function test_accounts_from() {
+            var got = Streaming.accountsFrom({ returnValue: true, results: [
+                { templateId: "org.webosports.video.m3u", icon: { loc_32x32: "/m32.png", loc_48x48: "/m1.png" } },
+                { templateId: "org.webosports.video.m3u", icon: { loc_48x48: "/m2.png" } },
+                { templateId: "org.webosports.app.music.tidal", beingDeleted: true, icon: { loc_48x48: "/t.png" } },
+                { templateId: "org.webosports.app.music.subsonic" },
+                { templateId: "org.webosports.app.music.deezer", icon: { loc_32x32: "/d32.png" } },
+                { templateId: "org.webosports.app.music.qobuz", icon: { loc_32x32: "/q32.png", loc_48x48: 48 } },
+                null
+            ] });
+            compare(got.ids, ["org.webosports.video.m3u", "org.webosports.video.m3u", "org.webosports.app.music.subsonic",
+                              "org.webosports.app.music.deezer", "org.webosports.app.music.qobuz"]);
+            compare(got.icons, { "org.webosports.video.m3u": "/m1.png" });
+            compare(Streaming.accountsFrom({ returnValue: false, results: [] }), null);
+            compare(Streaming.accountsFrom({ returnValue: true }), null);
+            compare(Streaming.accountsFrom(null), null);
+        }
+
         function test_track_place() {
             var t = Streaming.track({ id: "s1", provider: "subsonic", title: "T", track: 3, disc: 2 }, "Subsonic");
             compare(t.track, 3);

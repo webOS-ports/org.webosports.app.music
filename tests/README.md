@@ -35,7 +35,8 @@ writing calls.
   retried, the session ended with the app.
 - `tst_streaming.qml`: `qml/js/Streaming.js` (paths, track objects, which
   services count as signed in, what a playlist keeps, the queue keeping
-  them), StreamingStore against a fake music streaming service (no daemon,
+  them), what listAccounts answered and the icon each service takes from
+  its account, StreamingStore against a fake music streaming service (no daemon,
   providers, search, errors, resolve), Player resolving streamed tracks (to
   the fixture files), skipping one that does not resolve, and handing
   Spotify to SpotifyEngine and back, and SpotifyEngine's Connect calls and
