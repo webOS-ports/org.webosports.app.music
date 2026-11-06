@@ -65,6 +65,34 @@ function current(state) {
     return state.pos >= 0 && state.pos < state.items.length ? state.items[state.pos] : null;
 }
 
+/* The entry at pos with fields changed (a station's name and what it
+ * plays, as they come in), here and in the order before shuffling; it stays
+ * the same entry. */
+function update(state, pos, fields) {
+    if (pos < 0 || pos >= state.items.length)
+        return state;
+    var qid = state.items[pos].qid;
+    var changed = function(e) {
+        var c = {};
+        for (var key in e)
+            c[key] = e[key];
+        for (var f in fields)
+            c[f] = fields[f];
+        c.qid = qid;
+        return c;
+    };
+    state.items = state.items.slice();
+    state.items[pos] = changed(state.items[pos]);
+    if (state.original) {
+        var at = _indexOfQid(state.original, qid);
+        if (at >= 0) {
+            state.original = state.original.slice();
+            state.original[at] = changed(state.original[at]);
+        }
+    }
+    return state;
+}
+
 function count(state) {
     return state.items.length;
 }

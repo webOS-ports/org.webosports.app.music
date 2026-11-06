@@ -41,7 +41,7 @@ var videoAccount = ["jellyfin", "emby", "plex"];
 var _names = {
     youtube: "YouTube", spotify: "Spotify", tidal: "Tidal", deezer: "Deezer", qobuz: "Qobuz",
     apple: "Apple Music", soundcloud: "SoundCloud", jamendo: "Jamendo", archive: "Internet Archive",
-    radio: "Internet Radio"
+    radio: "Internet Radio", fm: "FM Radio"
 };
 
 function displayName(id) {

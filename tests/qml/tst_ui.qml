@@ -19,6 +19,7 @@ import QtTest
 
 import LuneOS.Service 1.0
 import "../../qml/js/Streaming.js" as Streaming
+import "../../qml/js/FmRadio.js" as Fm
 
 /*
  * The app itself, qml/main.qml, with luneos-components' desktop stand-ins
@@ -538,6 +539,301 @@ Item {
             root.app.streaming.refresh();
             tryVerify(function() { return root.app.streaming.servicePlaylists.length === 0; });
             lp.category = "albums";
+        }
+
+        // FM, against a fake org.webosports.service.fmradio: a device with a
+        // tuner has a Radio tab without the radio account, the tuner and the
+        // last scan's stations first; a station plays through the player
+        // (the radio on there), seek lands on the next one, pause and
+        // clearing the queue turn the radio off, a scan keeps its stations.
+        function test_18_fm_radio() {
+            var calls = [];
+            var sub = null;
+            var answers = { powerOn: function(a) { return { returnValue: true, frequency: a.frequency || 95000 }; },
+                            seek: function(a) { return { returnValue: true, frequency: a.direction === "up" ? 100100 : 91000 }; },
+                            scan: function(a) { return { returnValue: true, stations: [91000, 95000, 100100] }; } };
+            var fake = {
+                subscribe: function(uri, args, onReply, onError) {
+                    sub = { reply: function(p) { onReply({ payload: JSON.stringify(p) }); },
+                            fail: function(e) { onError(e); }, cancel: function() { sub = null; } };
+                    return sub;
+                },
+                call: function(uri, args, onReply, onError) {
+                    var m = uri.replace("luna://org.webosports.service.fmradio/", "");
+                    var a = JSON.parse(args);
+                    calls.push({ method: m, payload: a });
+                    onReply({ payload: JSON.stringify(answers[m] ? answers[m](a) : { returnValue: true }) });
+                }
+            };
+            var status = function(extra) {
+                var st = { returnValue: true, available: true, powered: false, frequency: 95000, busy: "idle",
+                           audio: false, band: { min: 87500, max: 108000, step: 100 }, stations: [] };
+                for (var k in extra)
+                    st[k] = extra[k];
+                return st;
+            };
+            var sent = function(m) { return calls.filter(function(c) { return c.method === m; }); };
+            // A key is pressed once nothing lies on top of it. The action
+            // sheet, hidden, still slides whenever the window's layout
+            // changes (the mini player coming up), and while it slides it
+            // is shown and takes every tap.
+            var sheet = findByName(root.app.contentItem, "actionSheet");
+            var tap = function(name) {
+                var b = findByName(list, name);
+                verify(b && b.visible, name + " shown");
+                tryCompare(sheet, "visible", false);
+                mouseClick(b);
+                wait(20);
+            };
+            // From the library's first page, whatever an earlier test left open.
+            root.app.pageStack.pop(null);
+            settle();
+            var radio = root.app.fmRadio;
+            var realBus = radio.bus;
+            try {
+                root.app.prefs.fmStations = JSON.stringify([95000, 100100]);
+                root.app.prefs.fmFrequency = 0;
+                root.app.prefs.fmNames = "{}";
+                root.app.prefs.fmOwnNames = "{}";
+                // No radio account, no tuner: no Radio tab.
+                verify(!root.app.hasInternetRadio);
+                verify(!root.app.categories.some(function(c) { return c.id === "radio"; }));
+                radio.bus = fake;
+                verify(sub);
+                // The radio's own list (from a scan before this app saw it)
+                // does not replace the one kept here.
+                sub.reply(status({ stations: [91000] }));
+                // Off and idle: the kept stations' names looked for, once.
+                compare(sent("findNames").length, 1);
+                compare(sent("findNames")[0].payload, { stations: [95000, 100100] });
+                sub.reply(status({ stations: [91000] }));
+                compare(sent("findNames").length, 1);
+                tryVerify(function() { return root.app.categories.some(function(c) { return c.id === "radio"; }); });
+                var lp = root.app.pageStack.get(0);
+                lp.category = "radio";
+                tryVerify(function() { return lp.currentView !== null && findByName(lp.currentView, "radioList") !== null; });
+                var view = lp.currentView;
+                var list = findByName(view, "radioList");
+                compare(view.rows.map(function(r) { return r.kind === "header" ? r.name : r.kind; }),
+                        ["fmTuner", "FM STATIONS", "fmStation", "fmStation", "fmScan"]);
+                list.positionViewAtBeginning();
+                tryVerify(function() { return findByName(list, "fmFrequency") !== null; });
+                compare(findByName(list, "fmFrequency").text, "95.0");
+                compare(findByName(list, "fmState").text, "Off");
+                screenshot("radio-fm");
+                // A station from the list plays: the radio on there.
+                list.positionViewAtIndex(3, ListView.Contain);
+                tryVerify(function() { return list.itemAtIndex(3) !== null && list.itemAtIndex(3).item !== null; });
+                compare(list.itemAtIndex(3).item.title, "100.1 FM");
+                list.itemAtIndex(3).item.clicked();
+                compare(root.app.player.current.path, "fm:100100");
+                tryVerify(function() { return sent("powerOn").length === 1; });
+                compare(sent("powerOn")[0].payload.frequency, 100100);
+                sub.reply(status({ powered: true, frequency: 100100, audio: true, rssi: -70 }));
+                tryVerify(function() { return root.app.player.playing; });
+                compare(root.app.prefs.fmFrequency, 100100);
+                list.positionViewAtBeginning();
+                tryCompare(findByName(list, "fmFrequency"), "text", "100.1");
+                compare(findByName(list, "fmState").text, "Good signal");
+                compare(list.itemAtIndex(3).item.subtitle, "Playing");
+                screenshot("radio-fm-playing");
+                // Seek down: on to the station it found.
+                tap("fmSeekDown");
+                compare(sent("seek")[0].payload.direction, "down");
+                compare(root.app.player.current.path, "fm:91000");
+                compare(sent("powerOn")[sent("powerOn").length - 1].payload.frequency, 91000);
+                sub.reply(status({ powered: true, frequency: 91000, audio: true, rssi: -82 }));
+                tryCompare(findByName(list, "fmFrequency"), "text", "91.0");
+                compare(findByName(list, "fmState").text, "Weak signal: the headphones are the antenna");
+                // A step up while playing tunes there.
+                tap("fmStepUp");
+                compare(root.app.player.current.path, "fm:91100");
+                // Off with the big key: the radio is switched off.
+                tap("fmPlay");
+                tryVerify(function() { return !root.app.player.playing; });
+                verify(sent("powerOff").length >= 1);
+                sub.reply(status({ powered: false, frequency: 91100 }));
+                // A step while off only moves what will play.
+                var ons = sent("powerOn").length;
+                tap("fmStepDown");
+                compare(root.app.prefs.fmFrequency, 91000);
+                compare(sent("powerOn").length, ons);
+                // RDS: the station says its name and what it plays. The track
+                // takes both, the name is kept for its frequency, and the
+                // list and the tuner show it.
+                root.app.player.playTracks([Fm.track(95000)], 0, false);
+                sub.reply(status({ powered: true, frequency: 95000, audio: true, rssi: -64,
+                                   rds: { name: "100% NL", text: "Onair: Guus Meeuwis" } }));
+                tryVerify(function() { return root.app.player.current.title === "100% NL"; }, 3000, "title " + "100% NL");
+                compare(root.app.player.current.artist, "Onair: Guus Meeuwis");
+                compare(root.app.player.current.album, "95.0 FM");
+                compare(root.app.player.current.path, "fm:95000");
+                compare(Fm.namesFrom(root.app.prefs.fmNames)["95000"], "100% NL");
+                list.positionViewAtBeginning();
+                tryCompare(findByName(list, "fmName"), "text", "100% NL");
+                compare(findByName(list, "fmText").text, "Onair: Guus Meeuwis");
+                var rowOf = function(khz) {
+                    var at = view.rows.map(function(r) { return r.khz; }).indexOf(khz);
+                    verify(at >= 0, khz + " listed");
+                    list.positionViewAtIndex(at, ListView.Contain);
+                    tryVerify(function() { return list.itemAtIndex(at) !== null && list.itemAtIndex(at).item !== null; });
+                    return list.itemAtIndex(at).item;
+                };
+                compare(rowOf(95000).title, "100% NL");
+                compare(rowOf(95000).subtitle, "95.0 FM · Playing");
+                list.positionViewAtBeginning();
+                screenshot("radio-fm-rds");
+                // Played again where the radio already is: what it plays at
+                // once, with no new status.
+                root.app.player.playTracks([Fm.track(95000, "100% NL")], 0, false);
+                compare(root.app.player.current.artist, "FM Radio");
+                tryVerify(function() { return root.app.player.current.artist === "Onair: Guus Meeuwis"; },
+                          3000, "RadioText at once");
+                // Another station: the name of the last is not this one's.
+                root.app.player.playTracks([Fm.track(100100)], 0, false);
+                // Until the radio is there, what the last one plays is not
+                // this one's either.
+                wait(50);
+                compare(root.app.player.current.artist, "FM Radio");
+                sub.reply(status({ powered: true, frequency: 100100, audio: true, rssi: -70 }));
+                tryVerify(function() { return root.app.player.current.title === "100.1 FM"; }, 3000, "title " + "100.1 FM");
+                compare(root.app.player.current.artist, "FM Radio");
+                // Nor kept for it: the status that tuned it still had the
+                // last one's RDS in the properties not yet refreshed.
+                compare(Fm.namesFrom(root.app.prefs.fmNames)["100100"], undefined);
+                // Back from the list: the name it sent before, at once.
+                rowOf(95000).clicked();
+                compare(root.app.player.current.path, "fm:95000");
+                compare(root.app.player.current.title, "100% NL");
+                sub.reply(status({ powered: true, frequency: 95000, audio: true, rssi: -64 }));
+                // A name of the user's own comes first; "Use" goes back to
+                // the one it sends.
+                var prompt = dialogOf("promptAcceptButton");
+                root.app.fmStationMenu(95000);
+                chooseInSheet("Rename…");
+                verify(prompt.opened);
+                compare(prompt.title, "Rename Station");
+                compare(prompt.text, "100% NL");
+                prompt.text = "Hits";
+                tapButton("promptAcceptButton");
+                compare(root.app.fmName(95000), "Hits");
+                tryVerify(function() { return root.app.player.current.title === "Hits"; }, 3000, "title " + "Hits");
+                compare(rowOf(95000).title, "Hits");
+                root.app.fmStationMenu(95000);
+                chooseInSheet("Use “100% NL”");
+                compare(root.app.fmName(95000), "100% NL");
+                tryVerify(function() { return root.app.player.current.title === "100% NL"; }, 3000, "title " + "100% NL");
+                // Out of the list.
+                var before = view.rows.filter(function(r) { return r.kind === "fmStation"; }).length;
+                root.app.fmStationMenu(100100);
+                chooseInSheet("Remove from List");
+                tryVerify(function() { return view.rows.filter(function(r) { return r.kind === "fmStation"; }).length === before - 1; });
+                verify(JSON.parse(root.app.prefs.fmStations).indexOf(100100) < 0);
+                // Swiped: past a third of the row it asks in place; short
+                // of it, or cancelled, the station stays.
+                var swipe = function(r, fraction) {
+                    mouseDrag(r, r.width * 0.2, r.height / 2, r.width * fraction, 0, Qt.LeftButton, Qt.NoModifier, 5);
+                };
+                var row95 = rowOf(95000);
+                swipe(row95, 0.15);
+                wait(300);
+                verify(!findByName(row95, "swipeDeleteButton").visible, "asked after a short swipe");
+                // Only stations go: the row that scans does not move.
+                list.positionViewAtEnd();
+                var scanAt = view.rows.length - 1;
+                tryVerify(function() { return list.itemAtIndex(scanAt) !== null && list.itemAtIndex(scanAt).item !== null; });
+                var scanRow = list.itemAtIndex(scanAt).item;
+                var scans = sent("scan").length;
+                // Held, not let go on it: that would be a tap, and scan.
+                mousePress(scanRow, scanRow.width * 0.2, scanRow.height / 2);
+                for (var step = 1; step <= 5; step++)
+                    mouseMove(scanRow, scanRow.width * (0.2 + 0.12 * step), scanRow.height / 2, -1, Qt.LeftButton);
+                compare(findByName(scanRow, "rowContent").x, 0, "the scan row moved");
+                mouseMove(scanRow, scanRow.width * 0.8, scanRow.height * 3, -1, Qt.LeftButton);
+                mouseRelease(scanRow, scanRow.width * 0.8, scanRow.height * 3);
+                wait(300);
+                verify(!scanRow.confirming, "the scan row asked to delete");
+                compare(sent("scan").length, scans);
+                row95 = rowOf(95000);
+                swipe(row95, -0.6);
+                var cancel = findByName(row95, "swipeCancelButton");
+                tryVerify(function() { return cancel.visible; }, 2000, "no Cancel after a long swipe");
+                mouseClick(cancel);
+                tryVerify(function() { return !cancel.visible; });
+                compare(JSON.parse(root.app.prefs.fmStations), [95000]);
+                swipe(row95, 0.6);
+                var del = findByName(row95, "swipeDeleteButton");
+                tryVerify(function() { return del.visible; }, 2000, "no Delete after a long swipe");
+                compare(JSON.parse(root.app.prefs.fmStations), [95000], "deleted before confirming");
+                mouseClick(del);
+                compare(JSON.parse(root.app.prefs.fmStations), []);
+                tryVerify(function() { return view.rows.filter(function(r) { return r.kind === "fmStation"; }).length === 0; });
+                // Emptied, it stays so: the radio's own list does not come back.
+                sub.reply(status({ powered: true, frequency: 95000, audio: true, rssi: -64, stations: [91000] }));
+                wait(50);
+                compare(view.rows.filter(function(r) { return r.kind === "fmStation"; }).length, 0);
+                root.app.player.clearQueue();
+                sub.reply(status({ powered: false, frequency: 95000 }));
+                // A scan: its stations kept.
+                list.positionViewAtEnd();
+                var last = view.rows.length - 1;
+                tryVerify(function() { return list.itemAtIndex(last) !== null && list.itemAtIndex(last).item !== null; });
+                list.itemAtIndex(last).item.clicked();
+                compare(JSON.parse(root.app.prefs.fmStations), [91000, 95000, 100100]);
+                tryCompare(view, "fmScanning", false);
+                compare(view.rows.filter(function(r) { return r.kind === "fmStation"; }).length, 3);
+                // Scanned with the radio off, the service names them in the
+                // background: each kept as it comes, no more asked of it.
+                sub.reply(status({ powered: false, frequency: 95000, busy: "naming",
+                                   names: { "91000": "SKYRADIO", "95000": "100% NL" } }));
+                compare(Fm.namesFrom(root.app.prefs.fmNames)["91000"], "SKYRADIO");
+                compare(rowOf(91000).title, "SKYRADIO");
+                list.positionViewAtBeginning();
+                tryCompare(findByName(list, "fmState"), "text", "Off · finding station names...");
+                sub.reply(status({ powered: false, frequency: 95000 }));
+                compare(sent("findNames").length, 1);
+                // Scanned while on: asked once it is off, for the ones with no name.
+                sub.reply(status({ powered: true, frequency: 95000, audio: true, rssi: -64 }));
+                list.positionViewAtEnd();
+                last = view.rows.length - 1;
+                tryVerify(function() { return list.itemAtIndex(last) !== null && list.itemAtIndex(last).item !== null; });
+                list.itemAtIndex(last).item.clicked();
+                tryCompare(view, "fmScanning", false);
+                answers.findNames = function(a) { return { returnValue: false, errorCode: 16, errorText: "the radio is on" }; };
+                var notified = root.app.lastNotification;
+                // Not while it plays, nor while it is busy otherwise.
+                sub.reply(status({ powered: true, frequency: 95000, audio: true, rssi: -63 }));
+                sub.reply(status({ powered: false, frequency: 95000, busy: "scanning" }));
+                compare(sent("findNames").length, 1);
+                sub.reply(status({ powered: false, frequency: 95000 }));
+                compare(sent("findNames").length, 2);
+                compare(sent("findNames")[1].payload, { stations: [100100] });
+                // Refused (the radio on again meanwhile): nothing to tell.
+                compare(root.app.lastNotification, notified);
+                // Clearing the queue while it plays switches it off as well.
+                root.app.player.playTracks([Fm.track(95000)], 0, false);
+                var offs = sent("powerOff").length;
+                root.app.player.clearQueue();
+                compare(sent("powerOff").length, offs + 1);
+                // The service gone: no FM, and no Radio tab.
+                radio.bus = realBus;
+                sub.fail("gone");
+                verify(!radio.available);
+                tryVerify(function() { return !root.app.categories.some(function(c) { return c.id === "radio"; }); });
+            } finally {
+                // Whatever happened, the tests after this one have no FM.
+                root.app.player.clearQueue();
+                radio.bus = realBus;
+                if (sub)
+                    sub.fail("gone");
+                root.app.prefs.fmStations = "";
+                root.app.prefs.fmFrequency = 0;
+                root.app.prefs.fmNames = "{}";
+                root.app.prefs.fmOwnNames = "{}";
+                root.app.pageStack.pop(null);
+                root.app.pageStack.get(0).category = "albums";
+                settle();
+            }
         }
 
         // Home: what was left playing, the last played (the library's and

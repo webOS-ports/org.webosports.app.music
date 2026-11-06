@@ -17,10 +17,23 @@ writing calls.
   indexer's records, compilations, disc folders, album artists, system
   sounds and the indexer's "Unknown ..." stand-ins left out, sorting,
   search, the automatic playlists, formatting, LRC parsing.
+- `tst_fmradio.qml`: FM - `qml/js/FmRadio.js` (paths, the band and its
+  steps, the service's status with what a missing field means, signal bars,
+  the station list, RDS name and RadioText, names kept per frequency),
+  `FmRadio.qml` against a fake service (the status
+  subscription, each request and its answer, a refusal, no answer, the
+  service going and asked again) and `FmEngine.qml` (play is the radio on
+  at the station, pause and unload off, another station tunes only while
+  playing, a late answer to an older play dropped, switched off elsewhere).
 - `tst_ui.qml`: the app itself against `fixtures/music` as the indexer would
   have stored it: Home (what was left playing, the last played, favourite
   stations and songs, playlists), the Radio tab (search, favourite stations,
-  station lists; none of it under Playlists), library, covers (embedded, folder.jpg above a disc folder,
+  station lists; none of it under Playlists; FM against a fake
+  `org.webosports.service.fmradio`: the tab without the radio account, the
+  tuner, a station played, seek, a step, off, RDS (the track named, the
+  name kept and not given to the next station, RadioText while the radio is
+  there, Rename and Use in the station menu, Remove from List), a scan, the
+  service going), library, covers (embedded, folder.jpg above a disc folder,
   none), every category, album page and playback, Now Playing (ReplayGain in
   every mode, lyrics, shuffle/repeat, favourite, cover tap regions), menus,
   queue, playlists (Rename, Delete and New Playlist through their
