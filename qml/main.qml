@@ -30,6 +30,7 @@ import MusicApp 1.0
 import LuneOS.Components 1.0 as LC
 import "components"
 import "js/DashboardRule.js" as DashboardRule
+import "js/FmRadio.js" as Fm
 import "js/Library.js" as Library
 import "js/Podcasts.js" as Podcasts
 import "js/Queue.js" as Queue
@@ -84,6 +85,7 @@ WebOSWindow {
     property alias stats: stats
     property alias playlists: playlists
     property alias streaming: streaming
+    property alias fmRadio: fmRadio
     property alias podcasts: podcasts
     property alias lyricsLookup: lyricsLookup
     property alias artistLookup: artistLookup
@@ -94,10 +96,12 @@ WebOSWindow {
 
     // Home, Radio, Podcasts and Streaming first, then the library on the
     // phone; Albums starts that second group (groupStart), which the tabs and
-    // the rail set apart. Radio while Internet Radio is signed in; Podcasts
+    // the rail set apart. Radio while Internet Radio is signed in or the
+    // device has an FM tuner; Podcasts
     // unless the streaming service has none (not running, or older);
     // Streaming only while the service runs and has a service signed in.
-    readonly property bool hasRadio: streaming.provider("radio") !== null
+    readonly property bool hasInternetRadio: streaming.provider("radio") !== null
+    readonly property bool hasRadio: hasInternetRadio || fmRadio.available
     readonly property bool hasPodcasts: podcasts.status !== "unavailable"
     readonly property var categories: [
         { id: "home", title: "Home", icon: "home", view: "HomeView.qml" }
@@ -207,6 +211,7 @@ WebOSWindow {
                 streaming.resolve(track, done, format);
         }
         streamingTransport: streaming.transport
+        fmRadio: fmRadio
         // An episode resumes where the podcast service says it was left,
         // whatever the preference: that is what podcasts do.
         resumeLookup: function(track) {
@@ -392,6 +397,135 @@ WebOSWindow {
     }
 
     // --- the headset's buttons ----------------------------------------------------
+
+    /* The FM tuner, on the devices that have one: the Radio tab's FM
+     * section, and the stations Player plays through FmEngine. */
+    FmRadio {
+        id: fmRadio
+        bus: service
+        // A station that was not found is not an error to tell about (the
+        // Radio tab shows where the seek ended), and one that did not
+        // start is told by the player, as any track that does not play.
+        onFailed: function(what, reason) {
+            if (what !== "seek" && what !== "powerOn" && what !== "findNames")
+                appWindow.notify("FM radio: " + (reason || "the service did not answer"));
+        }
+        onSnapshotChanged: {
+            appWindow._fmLearnNames();
+            appWindow._fmOnAir();
+        }
+    }
+
+    Connections {
+        target: player
+        // Later, not in the change itself: a queue set while current is
+        // still being notified does not reach current.
+        function onCurrentChanged() { Qt.callLater(appWindow._fmOnAir); }
+    }
+
+    Connections {
+        target: preferences
+        function onFmOwnNamesChanged() { appWindow._fmOnAir(); }
+    }
+
+    /* A station's name: the one the user gave it, else the one it sent over
+     * RDS, else "". */
+    function fmName(khz) {
+        return Fm.nameOf(khz, Fm.namesFrom(preferences.fmOwnNames), Fm.namesFrom(preferences.fmNames));
+    }
+
+    /*
+     * The station playing, as it says it is: its RDS name is kept for its
+     * frequency, and the track takes its name and what it is playing, so
+     * Now Playing, the dashboard and the headset show them. Only while the
+     * radio is on that very station: a name heard before a tune is not the
+     * next one's.
+     */
+    /* The names the service heard, kept; and, once a run, the kept stations
+     * with none looked for while the radio is off. */
+    property bool fmNamesAsked: false
+    function _fmLearnNames() {
+        var st = fmRadio.snapshot;
+        var learned = Fm.namesFrom(preferences.fmNames);
+        var changed = false;
+        for (var k in st.names) {
+            var m = Fm.withName(learned, k, st.names[k]);
+            if (m) {
+                learned = m;
+                changed = true;
+            }
+        }
+        if (changed)
+            preferences.fmNames = JSON.stringify(learned);
+        if (fmNamesAsked || !st.available || st.powered || st.busy !== "")
+            return;
+        var kept = [];
+        try {
+            kept = Fm.stationList(JSON.parse(preferences.fmStations));
+        } catch (e) {
+            kept = [];
+        }
+        var missing = kept.filter(function(khz) { return fmName(khz) === ""; });
+        if (missing.length === 0)
+            return;
+        fmNamesAsked = true;
+        fmRadio.findNames(missing);
+    }
+
+    function _fmOnAir() {
+        var cur = player.current;
+        if (!cur || !Fm.isFm(cur.path))
+            return;
+        var khz = Fm.khzOf(cur.path);
+        // One status: its frequency and its RDS are of the same moment.
+        var st = fmRadio.snapshot;
+        var onAir = st.powered && st.frequency === khz;
+        if (onAir && st.rdsName !== "") {
+            var learned = Fm.withName(Fm.namesFrom(preferences.fmNames), khz, st.rdsName);
+            if (learned)
+                preferences.fmNames = JSON.stringify(learned);
+        }
+        var want = Fm.track(khz, fmName(khz), onAir ? st.rdsText : "");
+        if (cur.title !== want.title || cur.artist !== want.artist || cur.album !== want.album)
+            player.updateCurrent({ title: want.title, artist: want.artist, album: want.album });
+    }
+
+    /* An FM station's menu: a name of the user's own, or back to the one it
+     * sends, and out of the list. */
+    function fmStationMenu(khz) {
+        var own = Fm.namesFrom(preferences.fmOwnNames);
+        var name = fmName(khz);
+        var choices = [{ label: "Rename…", action: function() {
+            prompt.ask({ title: "Rename Station", text: name !== "" ? name : Fm.title(khz),
+                         // Empty: back to the name the station sends.
+                         onAccepted: function(text) {
+                             var t = text.trim() === Fm.title(khz) ? "" : text;
+                             var m = Fm.withName(Fm.namesFrom(preferences.fmOwnNames), khz, t);
+                             if (m)
+                                 preferences.fmOwnNames = JSON.stringify(m);
+                         } });
+        } }];
+        if (Fm.nameOf(khz, own, null) !== "") {
+            var sent = Fm.nameOf(khz, null, Fm.namesFrom(preferences.fmNames));
+            choices.push({ label: sent !== "" ? "Use “" + sent + "”" : "Remove Name", action: function() {
+                var m = Fm.withName(Fm.namesFrom(preferences.fmOwnNames), khz, "");
+                if (m)
+                    preferences.fmOwnNames = JSON.stringify(m);
+            } });
+        }
+        choices.push({ label: "Remove from List", destructive: true, action: function() { fmRemoveStation(khz); } });
+        sheet.show(name !== "" ? name : Fm.title(khz), choices, name !== "" ? Fm.title(khz) : "");
+    }
+
+    function fmRemoveStation(khz) {
+        var list = [];
+        try {
+            list = JSON.parse(preferences.fmStations);
+        } catch (e) {
+            list = [];
+        }
+        preferences.fmStations = JSON.stringify(Fm.stationList(list).filter(function(k) { return k !== khz; }));
+    }
 
     /* A media session of com.webos.service.mediacontroller: a Bluetooth
      * headset's buttons reach the player in the background too, not only
@@ -945,7 +1079,7 @@ WebOSWindow {
     }
 
     function smartTracks(id) {
-        var isStation = function(t) { return t.provider === "radio"; };
+        var isStation = function(t) { return t.provider === "radio" || t.provider === "fm"; };
         if (id === "favoriteStations")
             return stats.streamedFavorites().filter(isStation);
         var list = Library.smartPlaylist(id, library.lib.songs, stats.asMap(), Date.now(), 100);

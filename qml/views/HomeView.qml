@@ -92,17 +92,20 @@ Item {
         var t = tracks[index];
         if (!t)
             return;
-        if (t.provider === "radio" || t.provider === "podcast") {
+        var alone = function(x) { return x.provider === "radio" || x.provider === "fm" || x.provider === "podcast"; };
+        if (alone(t)) {
             appWindow.player.playTracks([t], 0, false);
             return;
         }
-        var songs = tracks.filter(function(x) { return x.provider !== "radio" && x.provider !== "podcast"; });
+        var songs = tracks.filter(function(x) { return !alone(x); });
         appWindow.player.playTracks(songs, songs.indexOf(t), false);
     }
 
     function detailOf(t) {
         if (t.provider === "radio")
             return t.artist || "Internet Radio";
+        if (t.provider === "fm")
+            return "FM Radio";
         if (t.provider === "podcast")
             return t.artist || "Podcast";
         return [t.artist, t.remote ? appWindow.streaming.providerName(t.provider) : ""]
@@ -172,7 +175,7 @@ Item {
             icon: modelData.kind === "all" ? "more"
                   : modelData.kind === "playlist" ? "playlist"
                   : modelData.kind === "resume" ? "play"
-                  : track && track.provider === "radio" ? "stream"
+                  : track && (track.provider === "radio" || track.provider === "fm") ? "stream"
                   : track && track.provider === "podcast" ? "podcast" : "note"
             artPath: track && !track.remote ? track.path : modelData.kind === "playlist" ? modelData.artPath : ""
             artAlbum: track && !track.remote ? (track.album || "") : ""

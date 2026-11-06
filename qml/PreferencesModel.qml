@@ -46,6 +46,16 @@ Settings {
     // The streaming format picked per service, as JSON: { "soundcloud": "AAC 96" }.
     property string streamFormats: "{}"
 
+    // FM radio: the last scan's stations (kHz, as JSON; "" before any, so
+    // a list trimmed to nothing stays empty) and the last station played,
+    // for the Radio tab before the radio is first on.
+    property string fmStations: ""
+    property int fmFrequency: 0
+    // The stations' names, as JSON { "<kHz>": name }: the ones they sent
+    // over RDS, and the ones the user gave them, which come first.
+    property string fmNames: "{}"
+    property string fmOwnNames: "{}"
+
     property string albumSort: "title"
     property string songSort: "title"
 }

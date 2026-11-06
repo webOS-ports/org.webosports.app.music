@@ -178,6 +178,33 @@ TestCase {
         compare(q.items.length, 0);
     }
 
+    // A station's name and what it plays, as they come in: the same entry,
+    // changed where it is and in the order before shuffling.
+    function test_update_in_place() {
+        var q = Queue.setTracks(Queue.create(), tracks(4), 1, true, seq([0.3]));
+        var cur = Queue.current(q);
+        var qid = cur.qid;
+        var before = q.items;
+        Queue.update(q, q.pos, { title: "100% NL", artist: "Onair" });
+        compare(Queue.current(q).title, "100% NL");
+        compare(Queue.current(q).artist, "Onair");
+        compare(Queue.current(q).path, cur.path);
+        compare(Queue.current(q).qid, qid);
+        verify(q.items !== before, "a new list, so bindings see it");
+        compare(cur.title !== "100% NL", true, "the old entry is left alone");
+        var orig = q.original.filter(function(e) { return e.qid === qid; })[0];
+        compare(orig.title, "100% NL");
+        // Unshuffled, it keeps them.
+        Queue.setShuffle(q, false);
+        compare(Queue.current(q).title, "100% NL");
+        // Out of range: nothing.
+        var n = q.items.length;
+        Queue.update(q, 99, { title: "x" });
+        Queue.update(q, -1, { title: "x" });
+        compare(q.items.length, n);
+        verify(q.items.every(function(e) { return e.title !== "x"; }));
+    }
+
     function test_serialize_round_trip() {
         var q = Queue.setTracks(Queue.create(), tracks(4), 2, true, seq([0.4, 0.7]));
         Queue.setRepeat(q, "all");

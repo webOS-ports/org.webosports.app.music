@@ -18,6 +18,7 @@ import QtQuick
 import QtMultimedia
 
 import "js/Queue.js" as Queue
+import "js/FmRadio.js" as Fm
 import "js/Streaming.js" as Streaming
 
 /*
@@ -75,6 +76,8 @@ Item {
     property var urlResolver: null
     // The HTTP calls of the music streaming service, for Spotify.
     property var streamingTransport: null
+    // The FmRadio that FM stations ("fm:<kHz>") play through.
+    property var fmRadio: null
 
     // --- what happened ------------------------------------------------------
     // A track began to play.
@@ -91,9 +94,12 @@ Item {
 
     // --- internals ------------------------------------------------------------
     property int _activeIndex: 0
-    // Spotify's tracks play through librespot, not either engine.
-    property bool _spotifyActive: false
-    readonly property var active: _spotifyActive ? spotifyEngine : (_activeIndex === 0 ? engineA : engineB)
+    // Spotify's tracks play through librespot and FM stations through the
+    // tuner, not either engine: the one that plays the current track then,
+    // else null. Neither has anything to load ahead or to crossfade with.
+    property var _external: null
+    readonly property bool _externalActive: _external !== null
+    readonly property var active: _external ? _external : (_activeIndex === 0 ? engineA : engineB)
     readonly property Engine standby: _activeIndex === 0 ? engineB : engineA
     // Bumped for every track started, so a resolve that answers late for a
     // track no longer current is dropped.
@@ -141,6 +147,12 @@ Item {
         masterFactor: player.sleepFade
         onEndOfMedia: player._onEnd(spotifyEngine)
         onFailed: function(reason) { player._onFailed(spotifyEngine, reason); }
+    }
+    FmEngine {
+        id: fmEngine
+        objectName: "fmEngine"
+        radio: player.fmRadio
+        onFailed: function(reason) { player._onFailed(fmEngine, reason); }
     }
     Engine {
         id: engineB
@@ -303,6 +315,13 @@ Item {
         }
     }
 
+    /* The track playing, with fields changed but still the same track: a
+     * station's name and what it plays, as they come in. */
+    function updateCurrent(fields) {
+        if (current)
+            _set(Queue.update(queue, queue.pos, fields));
+    }
+
     function clearQueue() {
         _finishCurrent(false);
         _set(Queue.clear(queue));
@@ -338,12 +357,22 @@ Item {
         _startCurrent(wasPlaying || auto, 0);
     }
 
+    /* The engine of its own that plays path, or null for engineA/B. */
+    function _externalFor(path) {
+        if (Streaming.isSpotify(path))
+            return spotifyEngine;
+        if (Fm.isFm(path))
+            return fmEngine;
+        return null;
+    }
+
     function _stopAll() {
         _wantPlay = false;
         engineA.unload();
         engineB.unload();
         spotifyEngine.unload();
-        _spotifyActive = false;
+        fmEngine.unload();
+        _external = null;
         _preloadedPos = -1;
         _preloadedPath = "";
         _fadingOut = null;
@@ -371,15 +400,18 @@ Item {
             _endFade();
         var serial = ++_startSerial;
         var resolving = false;
-        if (Streaming.isSpotify(track.path)) {
+        var external = _externalFor(track.path);
+        if (external) {
             engineA.unload();
             engineB.unload();
-            _spotifyActive = true;
-            spotifyEngine.load(track.path);
+            if (_external && _external !== external)
+                _external.unload();
+            _external = external;
+            external.load(track.path);
         } else {
-            if (_spotifyActive) {
-                spotifyEngine.unload();
-                _spotifyActive = false;
+            if (_external) {
+                _external.unload();
+                _external = null;
             }
             if (_preloadedPos === queue.pos && _preloadedPath === track.path) {
                 active.stop();
@@ -418,7 +450,7 @@ Item {
                 active.seek(_pendingSeek);
                 _pendingSeek = -1;
             }
-            if (_spotifyActive && _pendingSeek > 0) {
+            if (_external === spotifyEngine && _pendingSeek > 0) {
                 active.seek(_pendingSeek);
                 _pendingSeek = -1;
             }
@@ -588,7 +620,7 @@ Item {
      * Stopped only while librespot loads a track. */
     function _stoppedByItself(serial) {
         var e = active;
-        if (serial !== _startSerial || _spotifyActive || !_wantPlay || !current || e.path !== current.path
+        if (serial !== _startSerial || _externalActive || !_wantPlay || !current || e.path !== current.path
                 || resumeTimer.running || e.playbackState !== MediaPlayer.StoppedState
                 || e.mediaStatus === MediaPlayer.EndOfMedia || e.mediaStatus === MediaPlayer.InvalidMedia)
             return;
@@ -608,7 +640,7 @@ Item {
     }
 
     function _resume() {
-        if (_resumeAt < 0 || _spotifyActive || !_wantPlay || !current || active.path !== current.path
+        if (_resumeAt < 0 || _externalActive || !_wantPlay || !current || active.path !== current.path
                 || active.playbackState !== MediaPlayer.StoppedState) {
             _cancelResume();
             return;
@@ -674,7 +706,7 @@ Item {
             return;
         // Spotify plays through librespot: nothing to load ahead, and no
         // crossfade into or out of it.
-        if (_spotifyActive || Streaming.isSpotify(track.path))
+        if (_externalActive || _externalFor(track.path))
             return;
         _preloadedPos = pos;
         _preloadedPath = track.path;
@@ -701,7 +733,7 @@ Item {
 
     function _startCrossfade() {
         var pos = _preloadedPos;
-        if (pos < 0 || !standby.loaded || _fadingOut || _spotifyActive)
+        if (pos < 0 || !standby.loaded || _fadingOut || _externalActive)
             return;
         _completed = true;
         _finishCurrent(true);
