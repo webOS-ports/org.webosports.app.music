@@ -1623,6 +1623,33 @@ Item {
             root.app.prefs.replayGain = "auto";
             root.app.player.jumpTo(0);
             screenshot("now-playing");
+            // A near-square screen (the Q25): cover and track side by side,
+            // the buttons along the bottom at their full size, previous and
+            // next as large as shuffle and repeat. Title and artist scroll
+            // rather than elide (MarqueeText, tested in luneos-components).
+            root.app.width = 720;
+            root.app.height = 672;
+            settle();
+            tryVerify(function() { return np.width === 720 && np.height === 672; }, 2000, "Now Playing at " + np.width + "x" + np.height);
+            verify(np.square);
+            var band = findByName(np, "previousButton").parent.parent;
+            compare(band.width, np.width);
+            var cover = findByName(np, "nowPlayingCover");
+            var title = findByName(np, "nowPlayingTitle");
+            verify(title.mapToItem(np, 0, 0).x >= cover.mapToItem(np, 0, 0).x + cover.width, "the track beside the cover");
+            verify(band.y >= cover.mapToItem(np, 0, cover.height).y, "the buttons under the cover");
+            compare(findByName(np, "previousButton").width, findByName(np, "shuffleButton").width);
+            verify(findByName(np, "previousButton").width >= 54, "full-size buttons");
+            verify(findByName(np, "previousButton").iconSize >= findByName(np, "shuffleButton").iconSize);
+            compare(findByName(np, "nextButton").width, findByName(np, "previousButton").width);
+            verify(title.overflow !== undefined && findByName(np, "nowPlayingArtist").overflow !== undefined);
+            compare(title.overflow, 0);
+            screenshot("now-playing-square");
+            root.app.width = 480;
+            root.app.height = 800;
+            settle();
+            tryVerify(function() { return !np.square && np.height === 800; }, 2000);
+            waitForRendering(np);
             np.showLyrics = true;
             tryVerify(function() { return np.lyricsText.indexOf("Chorus line") >= 0; });
             // The song's own lyrics: no credit.
