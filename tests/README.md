@@ -48,7 +48,10 @@ writing calls.
   not), and how far it trusts the daemon's lagging play state: a reply to a
   poll sent before the last command is dropped, and a different play state
   needs two reports in a row - so a stray report neither undoes a pause nor
-  activates the media session again.
+  activates the media session again. A play while a load is on its way
+  sends no second load, and a refused load can be asked for again
+  (`test_a_play_while_the_load_is_on_its_way_sends_no_second_load`,
+  `test_a_refused_load_can_be_sent_again`); mutation-checked 2026-11-25.
   A web address handed to the app (`{target: "http://..."}`) becomes a
   stream of the Internet Radio service (`radio:u.<base64url>`), titled
   after its last path part or its host (`test_web_stream_path`,

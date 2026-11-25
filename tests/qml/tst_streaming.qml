@@ -1014,6 +1014,36 @@ Item {
             spotify.failed.disconnect(onFailed);
         }
 
+        // Q25, 18:09:34 and 18:09:35: a second play while the load was on
+        // its way sent the load again, and librespot loaded the track twice.
+        function test_a_play_while_the_load_is_on_its_way_sends_no_second_load() {
+            root.holdLoad = true;
+            root.answers["POST /player/volume"] = [200, { ok: true }];
+            spotify.load("spotify:track:x");
+            spotify.play();
+            spotify.play();
+            compare(sent("/player/load"), 1);
+            verify(!spotify.isPlaying);
+            root.heldLoad(200, { ok: true, duration_ms: 200000 });
+            verify(spotify.isPlaying);
+            compare(spotify.duration, 200000);
+            compare(sent("/player/load"), 1);
+        }
+
+        // A load answered "no" can be asked for again.
+        function test_a_refused_load_can_be_sent_again() {
+            root.answers["POST /player/load"] = [409, { error: "librespot device not found" }];
+            spotify.load("spotify:track:x");
+            spotify.play();
+            compare(sent("/player/load"), 1);
+            verify(!spotify.isPlaying);
+            root.answers["POST /player/load"] = [200, { ok: true, duration_ms: 200000 }];
+            root.answers["POST /player/volume"] = [200, { ok: true }];
+            spotify.play();
+            compare(sent("/player/load"), 2);
+            verify(spotify.isPlaying);
+        }
+
         // 12:32:47: a play answered 200 that did not reach librespot.
         function test_a_play_that_does_not_show_is_sent_again_then_taken() {
             playing();
