@@ -1118,6 +1118,55 @@ Item {
             settle();
         }
 
+        // A service that plays only previews (a Tidal account whose
+        // subscription ended): "Preview" in Now Playing and after the
+        // service in the line under the title, the reason in a toast the
+        // first time and on a tap of the badge.
+        function test_18b_streaming_preview() {
+            var why = "Tidal plays 30-second previews: this Tidal account has no active subscription";
+            root.app.streaming.transport = function(method, url, body, done) {
+                var path = url.replace(/^http:\/\/127\.0\.0\.1:8730/, "").replace(/\?.*$/, "");
+                if (method === "GET" && path === "/providers")
+                    return done(200, { providers: [{ id: "tidal", name: "Tidal" }] });
+                if (method === "POST" && path === "/provider/tidal/resolve")
+                    return done(200, { url: "file://" + (root.fixtures + "/Various/Summer Mix/01 Ana Ray - Sun.ogg")
+                                                       .split("/").map(encodeURIComponent).join("/"),
+                                       format: "FLAC", formats: ["FLAC"], preview: why });
+                done(404, { error: "no" });
+            };
+            root.app.streaming.refresh();
+            root.app.lastNotification = "";
+            root.app._previewsTold = [];
+            root.app.player.playTracks([{ path: "tidal:542289", title: "Ghosts", artist: "Michael Jackson", album: "Blood on the Dance Floor",
+                                          provider: "tidal", remote: true, duration: 3000 }], 0, false);
+            tryVerify(function() { return root.app.player.playing; }, 5000);
+            compare(root.app.player.currentPreview, why);
+            compare(root.app.lastNotification, why);
+            root.app.openNowPlaying();
+            var np = findByName(root.app.contentItem, "nowPlaying");
+            tryCompare(np, "y", 0, 3000);
+            var badge = findByName(np, "previewBadge");
+            verify(badge.visible);
+            verify(findByName(np, "nowPlayingArtist").text.indexOf("\u00b7 Preview") > 0, findByName(np, "nowPlayingArtist").text);
+            wait(400); // the slide in
+            screenshot("now-playing-preview");
+            // told once a session; a tap on the badge tells it again
+            root.app.lastNotification = "";
+            root.app.player.playTracks([{ path: "tidal:1781887", title: "Billie Jean", artist: "Michael Jackson", album: "Thriller",
+                                          provider: "tidal", remote: true, duration: 3000 }], 0, false);
+            tryVerify(function() { return root.app.player.playing && root.app.player.current.path === "tidal:1781887"; }, 5000);
+            compare(root.app.player.currentPreview, why);
+            compare(root.app.lastNotification, "");
+            mouseClick(badge);
+            compare(root.app.lastNotification, why);
+            // a file on the device: no badge
+            root.app.player.playTracks(root.app.library.lib.songs.slice(0, 1), 0, false);
+            tryVerify(function() { return !badge.visible; }, 3000);
+            root.app.player.clearQueue();
+            root.app.closeNowPlaying();
+            settle();
+        }
+
         // Every main screen at every size the app has to look right at:
         // a phone (480x800, and the small 320x480), the Q25's square
         // (720x720), a tablet both ways (1024x768, 768x1024).

@@ -165,15 +165,23 @@ function providerOf(t) {
  * The line under a track's title that says where it plays from: its artist,
  * then the service's name ("The Rolling Stones · Spotify"); the name alone
  * when there is no artist apart from it (a radio station); the artist alone
- * for a file on the device.
+ * for a file on the device. preview: the service plays only a preview of it
+ * ("… · Tidal · Preview").
  */
-function sourceLine(t, providerName) {
+function sourceLine(t, providerName, preview) {
     var provider = providerOf(t);
     var artist = artistOf(t, providerName);
     if (!provider)
         return artist;
     var name = providerName || displayName(provider);
-    return artist && artist !== name ? artist + " \u00b7 " + name : name;
+    var line = artist && artist !== name ? artist + " \u00b7 " + name : name;
+    return preview ? line + " \u00b7 Preview" : line;
+}
+
+/* Why a resolve's stream is only a preview of the track ({ url, preview }),
+ * in the service's words; "" for the whole track. */
+function previewOf(reply) {
+    return reply && typeof reply.preview === "string" ? reply.preview : "";
 }
 
 /* A resolve's answer ({ url, format, formats }) as { format, formats }, the

@@ -210,6 +210,17 @@ Item {
             compare(Streaming.providerOf(file), "");
             compare(Streaming.sourceLine(file, ""), "Blue Band");
             compare(Streaming.sourceLine(null, ""), "");
+            // a service that plays only a preview of it
+            compare(Streaming.sourceLine(paint, "Spotify", true), "The Rolling Stones \u00b7 Spotify \u00b7 Preview");
+            compare(Streaming.sourceLine(station, "Internet Radio", true), "Internet Radio \u00b7 Preview");
+            compare(Streaming.sourceLine(file, "", true), "Blue Band");
+        }
+
+        function test_preview_of() {
+            compare(Streaming.previewOf({ url: "u", preview: "Tidal plays 30-second previews" }), "Tidal plays 30-second previews");
+            compare(Streaming.previewOf({ url: "u" }), "");
+            compare(Streaming.previewOf({ url: "u", preview: true }), "");
+            compare(Streaming.previewOf(null), "");
         }
 
         function test_signed_in() {
@@ -797,6 +808,27 @@ Item {
             player.switchFormat("FLAC", function(e) { result = e; });
             compare(result, "This track has no other formats.");
             compare(asked.length, n);
+            player.pause();
+        }
+
+        // A service that sends only a preview says why; the player keeps it
+        // with the track, as the formats, and the next track's own.
+        function test_preview_follows_the_track() {
+            var why = "Tidal plays 30-second previews: this Tidal account has no active subscription";
+            root.answers["POST /provider/tidal/resolve"] = function(body) {
+                return [200, body.trackId === "1"
+                        ? { url: fileUrl("Various/Summer Mix/01 Ana Ray - Sun.ogg"), preview: why }
+                        : { url: fileUrl("Various/Summer Mix/02 Cool Cats - Sun.ogg") }];
+            };
+            player.playTracks([{ path: "tidal:1", title: "One", remote: true },
+                               { path: "tidal:2", title: "Two", remote: true }], 0, false);
+            tryVerify(function() { return player.playing; }, 5000);
+            compare(player.currentPreview, why);
+            tryVerify(function() { return player._preloadedPos === 1 && player.standby.loaded; }, 5000);
+            compare(player.currentPreview, why, "the next one's does not take the playing one's");
+            player.next();
+            tryVerify(function() { return player.playing && player.active.path === "tidal:2"; }, 5000);
+            compare(player.currentPreview, "");
             player.pause();
         }
 

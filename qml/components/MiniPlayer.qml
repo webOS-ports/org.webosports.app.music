@@ -42,7 +42,8 @@ Rectangle {
     readonly property var track: player ? player.current : null
     readonly property string _provider: Streaming.providerOf(track)
     readonly property var _service: _provider && streaming ? streaming.provider(_provider) : null
-    readonly property string sourceText: Streaming.sourceLine(track, _service ? _service.name : "")
+    readonly property string sourceText: Streaming.sourceLine(track, _service ? _service.name : "",
+                                                              !!(player && player.currentPreview))
     readonly property string sourceIcon: _service && _service.icon ? _service.icon : ""
 
     Rectangle {

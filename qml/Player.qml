@@ -54,6 +54,9 @@ Item {
     // { format, formats } of the streamed track playing, when its service
     // has a choice of formats (switchFormat), else null.
     readonly property var currentFormat: current && _formats[current.path] ? _formats[current.path] : null
+    // Why the streamed track playing is only a preview of it ("Tidal plays
+    // 30-second previews: …"), "" when it plays whole.
+    readonly property string currentPreview: current && _previews[current.path] ? _previews[current.path] : ""
 
     // --- settings (main.qml binds these to the preferences) --------------
     property real rate: 1.0
@@ -117,6 +120,8 @@ Item {
     property string _failedPath: ""
     // { path: { format, formats } } of the playing and the preloaded track.
     property var _formats: ({})
+    // { path: why } of the playing and the preloaded track, when a preview.
+    property var _previews: ({})
     // A start asked for before the track was loaded (seek to resume point).
     property real _pendingSeek: -1
     property bool _wantPlay: false
@@ -466,14 +471,14 @@ Item {
             _onFailed(active, "Streaming is not available.");
             return;
         }
-        urlResolver(track, function(url, error, formats) {
+        urlResolver(track, function(url, error, formats, preview) {
             if (serial !== player._startSerial)
                 return;
             if (!url) {
                 player._onFailed(player.active, error || "The track cannot be streamed.");
                 return;
             }
-            player._noteFormats(track.path, formats);
+            player._noteFormats(track.path, formats, preview);
             player.active.load(track.path, url);
             if (player._wantPlay)
                 player.active.play();
@@ -493,14 +498,14 @@ Item {
         var at = position;
         var andPlay = playing || _wantPlay;
         var serial = ++_startSerial;
-        urlResolver(track, function(url, error, formats) {
+        urlResolver(track, function(url, error, formats, preview) {
             if (serial !== player._startSerial)
                 return;
             if (!url) {
                 report(error || "The track cannot be streamed in " + format + ".");
                 return;
             }
-            player._noteFormats(track.path, formats);
+            player._noteFormats(track.path, formats, preview);
             // Engine.load keeps a track it already has: drop it first.
             player.active.unload();
             player.active.load(track.path, url);
@@ -513,15 +518,19 @@ Item {
     }
 
     // Keeps the formats of path, and of the playing and preloaded tracks.
-    function _noteFormats(path, formats) {
-        var kept = {};
-        for (var p in _formats) {
-            if (p !== path && ((current && p === current.path) || p === _preloadedPath))
-                kept[p] = _formats[p];
+    function _noteFormats(path, formats, preview) {
+        function keep(all, value) {
+            var kept = {};
+            for (var p in all) {
+                if (p !== path && ((current && p === current.path) || p === _preloadedPath))
+                    kept[p] = all[p];
+            }
+            if (value)
+                kept[path] = value;
+            return kept;
         }
-        if (formats)
-            kept[path] = formats;
-        _formats = kept;
+        _formats = keep(_formats, formats);
+        _previews = keep(_previews, preview || "");
     }
 
     function _applyPendingSeek() {
@@ -718,12 +727,12 @@ Item {
         if (!urlResolver)
             return;
         var engine = standby;
-        urlResolver(track, function(url, error, formats) {
+        urlResolver(track, function(url, error, formats, preview) {
             // Still the one planned next, on the same engine?
             if (player._preloadedPos !== pos || player._preloadedPath !== track.path || player.standby !== engine)
                 return;
             if (url) {
-                player._noteFormats(track.path, formats);
+                player._noteFormats(track.path, formats, preview);
                 engine.load(track.path, url);
             } else {
                 player._preloadedPos = -1;

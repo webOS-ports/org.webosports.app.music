@@ -64,10 +64,13 @@ Rectangle {
     // icon, and its name after the artist.
     readonly property string _provider: Streaming.providerOf(track)
     readonly property var _service: _provider && appWindow.streaming ? appWindow.streaming.provider(_provider) : null
-    readonly property string sourceText: Streaming.sourceLine(track, _service ? _service.name : "")
+    readonly property string sourceText: Streaming.sourceLine(track, _service ? _service.name : "",
+                                                              !!(player && player.currentPreview))
     readonly property string sourceIcon: _service && _service.icon ? _service.icon : ""
     // { format, formats } of a streamed track whose service has a choice.
     readonly property var format: player ? player.currentFormat : null
+    // Why the service plays only a preview of the track, "" when it plays whole.
+    readonly property string preview: player ? player.currentPreview : ""
     readonly property bool landscape: width >= height
     // Near-square: side by side, but the buttons in a full-width band below.
     readonly property bool square: landscape && width < height * 1.25
@@ -440,47 +443,75 @@ Rectangle {
             textColor: np.theme.darkSecondaryText
             onSeekRequested: function(ms) { np.player.seek(ms); }
 
-            // The streamed track's format, between the times; a tap offers
-            // the others when there are any.
-            Rectangle {
-                id: formatBadge
-                objectName: "formatBadge"
-                readonly property bool switchable: !!(np.format && np.format.formats.length > 1)
-                visible: np.format !== null
+            // Between the times: "Preview" when the service plays only a
+            // preview of the track (a tap says why), and the streamed track's
+            // format (a tap offers the others when there are any).
+            Row {
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
-                width: formatRow.implicitWidth + Units.gu(1.6)
-                height: formatText.implicitHeight + Units.gu(0.4)
-                radius: height / 2
-                color: "transparent"
-                border.width: 1
-                border.color: switchable ? np.theme.accent : np.theme.darkSecondaryText
-                Row {
-                    id: formatRow
-                    anchors.centerIn: parent
-                    spacing: Units.gu(0.3)
+                spacing: Units.gu(0.6)
+
+                Rectangle {
+                    id: previewBadge
+                    objectName: "previewBadge"
+                    visible: np.preview !== ""
+                    width: previewText.implicitWidth + Units.gu(1.6)
+                    height: previewText.implicitHeight + Units.gu(0.4)
+                    radius: height / 2
+                    color: np.theme.accent
                     Text {
-                        id: formatText
-                        objectName: "formatText"
-                        text: np.format ? np.format.format : ""
-                        color: formatBadge.switchable ? np.theme.darkText : np.theme.darkSecondaryText
+                        id: previewText
+                        anchors.centerIn: parent
+                        text: "Preview"
+                        color: "white"
                         font.pixelSize: np.theme.fontTiny
+                        font.weight: Font.DemiBold
                     }
-                    // The device fonts have no ▾.
-                    Image {
-                        anchors.verticalCenter: parent.verticalCenter
-                        visible: formatBadge.switchable
-                        source: Qt.resolvedUrl("images/down.svg")
-                        sourceSize.width: formatText.font.pixelSize
-                        sourceSize.height: formatText.font.pixelSize
+                    MouseArea {
+                        anchors.fill: parent
+                        anchors.margins: -Units.gu(1)
+                        onClicked: appWindow.notify(np.preview)
                     }
                 }
-                MouseArea {
-                    anchors.fill: parent
-                    // A finger-sized target around the small badge.
-                    anchors.margins: -Units.gu(1)
-                    enabled: formatBadge.switchable
-                    onClicked: appWindow.chooseFormat()
+
+                Rectangle {
+                    id: formatBadge
+                    objectName: "formatBadge"
+                    readonly property bool switchable: !!(np.format && np.format.formats.length > 1)
+                    visible: np.format !== null
+                    width: formatRow.implicitWidth + Units.gu(1.6)
+                    height: formatText.implicitHeight + Units.gu(0.4)
+                    radius: height / 2
+                    color: "transparent"
+                    border.width: 1
+                    border.color: switchable ? np.theme.accent : np.theme.darkSecondaryText
+                    Row {
+                        id: formatRow
+                        anchors.centerIn: parent
+                        spacing: Units.gu(0.3)
+                        Text {
+                            id: formatText
+                            objectName: "formatText"
+                            text: np.format ? np.format.format : ""
+                            color: formatBadge.switchable ? np.theme.darkText : np.theme.darkSecondaryText
+                            font.pixelSize: np.theme.fontTiny
+                        }
+                        // The device fonts have no ▾.
+                        Image {
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: formatBadge.switchable
+                            source: Qt.resolvedUrl("images/down.svg")
+                            sourceSize.width: formatText.font.pixelSize
+                            sourceSize.height: formatText.font.pixelSize
+                        }
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        // A finger-sized target around the small badge.
+                        anchors.margins: -Units.gu(1)
+                        enabled: formatBadge.switchable
+                        onClicked: appWindow.chooseFormat()
+                    }
                 }
             }
         }
