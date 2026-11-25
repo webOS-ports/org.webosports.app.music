@@ -154,6 +154,28 @@ function artistOf(t, providerName) {
     return artist;
 }
 
+/* The service a track comes from ("spotify"), or "" for a file on the device. */
+function providerOf(t) {
+    if (!t || !t.remote)
+        return "";
+    return t.provider || (split(t.path) ? split(t.path).provider : "");
+}
+
+/*
+ * The line under a track's title that says where it plays from: its artist,
+ * then the service's name ("The Rolling Stones · Spotify"); the name alone
+ * when there is no artist apart from it (a radio station); the artist alone
+ * for a file on the device.
+ */
+function sourceLine(t, providerName) {
+    var provider = providerOf(t);
+    var artist = artistOf(t, providerName);
+    if (!provider)
+        return artist;
+    var name = providerName || displayName(provider);
+    return artist && artist !== name ? artist + " \u00b7 " + name : name;
+}
+
 /* A resolve's answer ({ url, format, formats }) as { format, formats }, the
  * format it plays in among the ones the track has; null when the service did
  * not say (it has no choice). */

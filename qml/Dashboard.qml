@@ -20,10 +20,12 @@ import Eos.Window 0.1
 import LunaNext.Common 0.1
 
 import "components"
+import "js/Streaming.js" as Streaming
 
 /*
  * The dashboard in the notification area while there is a queue and the
- * card is not in front, also paused: the cover, the track, and previous /
+ * card is not in front, also paused: the cover, the track, the service it
+ * plays from (its icon and name after the artist), and previous /
  * play-pause / next.
  * A tap anywhere else brings the card back. The card shell takes any
  * floating window as a dashboard and reads its height from
@@ -34,6 +36,8 @@ WebOSWindow {
 
     property var player
     property var theme
+    // StreamingStore: the services' names and icons
+    property var streaming: null
 
     signal openRequested()
     // Swiped away in the notification area: the music stops with it (a
@@ -43,6 +47,10 @@ WebOSWindow {
     property bool _shown: false
 
     readonly property var track: player ? player.current : null
+    readonly property string _provider: Streaming.providerOf(track)
+    readonly property var _service: _provider && streaming ? streaming.provider(_provider) : null
+    readonly property string sourceText: Streaming.sourceLine(track, _service ? _service.name : "")
+    readonly property string sourceIcon: _service && _service.icon ? _service.icon : ""
 
     windowType: "_WEBOS_WINDOW_TYPE_FLOATING"
     width: Settings.displayWidth
@@ -105,12 +113,29 @@ WebOSWindow {
             font.pixelSize: FontUtils.sizeToPixels("medium")
             elide: Text.ElideRight
         }
-        Text {
+        Row {
             width: parent.width
-            text: dashboard.track ? dashboard.track.artist : ""
-            color: "#aaaaaa"
-            font.pixelSize: FontUtils.sizeToPixels("small")
-            elide: Text.ElideRight
+            spacing: Units.gu(0.6)
+            Image {
+                id: sourceIcon
+                objectName: "dashboardSourceIcon"
+                anchors.verticalCenter: parent.verticalCenter
+                visible: dashboard.sourceIcon !== ""
+                source: dashboard.sourceIcon
+                width: visible ? Units.gu(1.8) : 0
+                height: width
+                sourceSize.width: Units.gu(1.8)
+                sourceSize.height: Units.gu(1.8)
+                fillMode: Image.PreserveAspectFit
+            }
+            Text {
+                objectName: "dashboardSource"
+                width: parent.width - (sourceIcon.visible ? sourceIcon.width + parent.spacing : 0)
+                text: dashboard.sourceText
+                color: "#aaaaaa"
+                font.pixelSize: FontUtils.sizeToPixels("small")
+                elide: Text.ElideRight
+            }
         }
     }
 

@@ -192,6 +192,26 @@ Item {
             compare(Streaming.artistOf(null, ""), "");
         }
 
+        // The dashboard's line under the title: which service a track is from.
+        function test_source_line() {
+            var paint = Streaming.track({ id: "63T7DJ1AFDD6Bn8VzG6JE8", provider: "spotify", title: "Paint It, Black",
+                                          artist: "The Rolling Stones", album: "Aftermath" }, "Spotify");
+            compare(Streaming.providerOf(paint), "spotify");
+            compare(Streaming.sourceLine(paint, "Spotify"), "The Rolling Stones \u00b7 Spotify");
+            // the service's own name when the daemon gives none
+            compare(Streaming.sourceLine(paint, ""), "The Rolling Stones \u00b7 Spotify");
+            // a station: no artist apart from the service
+            var station = { path: "radio:s.abc", title: "Radio 1", artist: "Internet Radio", album: "Internet Radio",
+                            remote: true };
+            compare(Streaming.providerOf(station), "radio");
+            compare(Streaming.sourceLine(station, "Internet Radio"), "Internet Radio");
+            // a file on the device: its artist only
+            var file = { path: "/media/internal/music/a.mp3", artist: "Blue Band", album: "Deep Water" };
+            compare(Streaming.providerOf(file), "");
+            compare(Streaming.sourceLine(file, ""), "Blue Band");
+            compare(Streaming.sourceLine(null, ""), "");
+        }
+
         function test_signed_in() {
             var daemon = [{ id: "youtube", name: "YouTube" }, { id: "tidal", name: "Tidal" },
                           { id: "qobuz", name: "Qobuz" }, { id: "deezer", name: "Deezer" }];
