@@ -755,6 +755,7 @@ WebOSWindow {
         sourceComponent: Dashboard {
             player: appWindow.player
             theme: themeObject
+            streaming: appWindow.streaming
             onOpenRequested: appWindow.openFromDashboard()
             // Only the user's swipe pauses; the Loader letting it go (the
             // card back in front) hides it too. It stays away until the music

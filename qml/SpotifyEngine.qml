@@ -44,6 +44,13 @@ import QtMultimedia
  * checkPolls reports it is sent once more, and if it still does not show
  * the engine says so (a load fails, a play or pause takes what the daemon
  * reports) and the journal has a line for each step.
+ *
+ * A track the daemon reports an error for (librespot got no key for it,
+ * twice) fails instead of counting on over silence.
+ *
+ * A load is sent once: a play while its answer is still on its way waits
+ * for it. Sent twice (Q25, 18:09:34 and 18:09:35), librespot loaded the
+ * track twice and asked Spotify twice for its key, on a slow network.
  */
 Item {
     id: engine
@@ -78,6 +85,7 @@ Item {
 
     property string _path: ""
     property bool _loaded: false       // librespot has the track
+    property bool _loadSent: false     // a load of _path is on its way
     property bool _playing: false
     property real _position: 0
     property real _duration: 0
@@ -114,6 +122,7 @@ Item {
         _expect = null;
         _path = p || "";
         _loaded = false;
+        _loadSent = false;
         _playing = false;
         _position = 0;
         _duration = 0;
@@ -133,11 +142,15 @@ Item {
             return;
         _command();
         if (!_loaded) {
+            if (_loadSent)
+                return;
+            _loadSent = true;
             const path = _path;
             const body = { uri: _path, position_ms: Math.round(_startAt) };
             _call("POST", "/player/load", body, function(code, data) {
                 if (path !== engine._path)
                     return;
+                engine._loadSent = false;
                 if (code !== 200) {
                     engine._error = (data && data.error) ? data.error : "Spotify is not ready.";
                     engine.failed(engine._error);
@@ -278,6 +291,17 @@ Item {
             return;
         var nearEnd = _duration > 0 && _position >= _duration - 3000;
         var ours = !s.uri || s.uri === _path;
+        // librespot got no key for the track, even loaded once more: it plays
+        // silence, whatever it says.
+        if (s.error && ours) {
+            _expect = null;
+            _loaded = false;
+            _playing = false;
+            _error = s.error;
+            console.warn("Music: Spotify cannot play " + _path + ": " + s.error);
+            failed(_error);
+            return;
+        }
         if (s.duration_ms > 0 && ours)
             _duration = s.duration_ms;
         // Stopped near the end, or moved on to something else: the end.

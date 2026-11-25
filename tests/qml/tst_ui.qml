@@ -1337,6 +1337,31 @@ Item {
             dash.destroy();
         }
 
+        // The dashboard says which service the track plays from: its icon and
+        // its name after the artist; a file on the device shows its artist.
+        function test_20b_dashboard_shows_the_service() {
+            var fake = Qt.createQmlObject('import QtQuick; QtObject { property var current: null; '
+                                          + 'property bool playing: false; property bool hasNext: false }', test);
+            var icon = Qt.resolvedUrl("../../qml/images/play.svg");
+            var store = { provider: function(id) { return id === "spotify" ? { id: "spotify", name: "Spotify", icon: icon } : null; } };
+            fake.current = { path: "spotify:track:63T7DJ1AFDD6Bn8VzG6JE8", title: "Paint It, Black",
+                             artist: "The Rolling Stones", album: "Aftermath", provider: "spotify", remote: true };
+            var c = Qt.createComponent(Qt.resolvedUrl("../../qml/Dashboard.qml"));
+            compare(c.status, Component.Ready, c.errorString());
+            var dash = c.createObject(null, { player: fake, theme: root.app.theme, streaming: store });
+            verify(dash);
+            compare(findByName(dash.contentItem, "dashboardSource").text, "The Rolling Stones \u00b7 Spotify");
+            var img = findByName(dash.contentItem, "dashboardSourceIcon");
+            verify(img.visible);
+            compare(String(img.source), String(icon));
+            // a file on the device: no service
+            fake.current = { path: "/media/internal/music/a.mp3", title: "Deep 1-1", artist: "Blue Band", album: "Deep Water" };
+            compare(findByName(dash.contentItem, "dashboardSource").text, "Blue Band");
+            verify(!img.visible);
+            dash.destroy();
+            fake.destroy();
+        }
+
         // Closing the card on paused music, or swiping the dashboard, keeps
         // it away until the music plays or the card is back.
         function test_21_dashboard_stays_away() {
@@ -1533,7 +1558,19 @@ Item {
             root.app.player.previous();
             compare(root.app.player.current.title, "Deep 1-1");
             verify(root.app.findChild ? true : true);
-            verify(findByName(root.app.contentItem, "miniPlayer").visible);
+            var mini = findByName(root.app.contentItem, "miniPlayer");
+            verify(mini.visible);
+            // The bar's previous, play/pause and next.
+            mouseClick(findByName(mini, "miniNext"));
+            compare(root.app.player.current.title, "Deep 1-2");
+            mouseClick(findByName(mini, "miniPrevious"));
+            compare(root.app.player.current.title, "Deep 1-1");
+            tryVerify(function() { return root.app.player.playing; }, 5000);
+            mouseClick(findByName(mini, "miniPlayPause"));
+            verify(!root.app.player.playing);
+            mouseClick(findByName(mini, "miniPlayPause"));
+            verify(root.app.player.playing);
+            screenshot("mini-player");
         }
 
         function test_05_now_playing() {

@@ -192,6 +192,26 @@ Item {
             compare(Streaming.artistOf(null, ""), "");
         }
 
+        // The dashboard's line under the title: which service a track is from.
+        function test_source_line() {
+            var paint = Streaming.track({ id: "63T7DJ1AFDD6Bn8VzG6JE8", provider: "spotify", title: "Paint It, Black",
+                                          artist: "The Rolling Stones", album: "Aftermath" }, "Spotify");
+            compare(Streaming.providerOf(paint), "spotify");
+            compare(Streaming.sourceLine(paint, "Spotify"), "The Rolling Stones \u00b7 Spotify");
+            // the service's own name when the daemon gives none
+            compare(Streaming.sourceLine(paint, ""), "The Rolling Stones \u00b7 Spotify");
+            // a station: no artist apart from the service
+            var station = { path: "radio:s.abc", title: "Radio 1", artist: "Internet Radio", album: "Internet Radio",
+                            remote: true };
+            compare(Streaming.providerOf(station), "radio");
+            compare(Streaming.sourceLine(station, "Internet Radio"), "Internet Radio");
+            // a file on the device: its artist only
+            var file = { path: "/media/internal/music/a.mp3", artist: "Blue Band", album: "Deep Water" };
+            compare(Streaming.providerOf(file), "");
+            compare(Streaming.sourceLine(file, ""), "Blue Band");
+            compare(Streaming.sourceLine(null, ""), "");
+        }
+
         function test_signed_in() {
             var daemon = [{ id: "youtube", name: "YouTube" }, { id: "tidal", name: "Tidal" },
                           { id: "qobuz", name: "Qobuz" }, { id: "deezer", name: "Deezer" }];
@@ -1012,6 +1032,70 @@ Item {
             verify(!spotify.isPlaying);
             compare(spotify._expect, null);
             spotify.failed.disconnect(onFailed);
+        }
+
+        // Q25, 18:09:34 and 18:09:35: a second play while the load was on
+        // its way sent the load again, and librespot loaded the track twice.
+        function test_a_play_while_the_load_is_on_its_way_sends_no_second_load() {
+            root.holdLoad = true;
+            root.answers["POST /player/volume"] = [200, { ok: true }];
+            spotify.load("spotify:track:x");
+            spotify.play();
+            spotify.play();
+            compare(sent("/player/load"), 1);
+            verify(!spotify.isPlaying);
+            root.heldLoad(200, { ok: true, duration_ms: 200000 });
+            verify(spotify.isPlaying);
+            compare(spotify.duration, 200000);
+            compare(sent("/player/load"), 1);
+        }
+
+        // Q25, 18:09:41: librespot got no key for the track and played
+        // silence; once the daemon says so the track fails, once.
+        function test_a_track_without_a_key_fails() {
+            playing();
+            var reasons = [];
+            var onFailed = function(r) { reasons.push(r); };
+            spotify.failed.connect(onFailed);
+            ignoreWarning("Music: Spotify cannot play spotify:track:x: no key");
+            spotify._onStatus(200, { is_playing: false, position_ms: 0, uri: "spotify:track:x",
+                                     error: "no key" }, spotify._commands);
+            compare(reasons, ["no key"]);
+            verify(!spotify.isPlaying);
+            compare(spotify.errorString, "no key");
+            // no more reports are taken, and none fails it again
+            spotify._onStatus(200, { is_playing: false, uri: "spotify:track:x", error: "no key" },
+                              spotify._commands);
+            compare(reasons.length, 1);
+            spotify.failed.disconnect(onFailed);
+        }
+
+        // An error about another track is not this one's.
+        function test_an_error_about_another_track_is_not_ours() {
+            playing();
+            var reasons = [];
+            var onFailed = function(r) { reasons.push(r); };
+            spotify.failed.connect(onFailed);
+            reportAs("spotify:track:other", true, 1000);
+            spotify._onStatus(200, { is_playing: false, uri: "spotify:track:other", error: "no key" },
+                              spotify._commands);
+            compare(reasons.length, 0);
+            verify(spotify.isPlaying);
+            spotify.failed.disconnect(onFailed);
+        }
+
+        // A load answered "no" can be asked for again.
+        function test_a_refused_load_can_be_sent_again() {
+            root.answers["POST /player/load"] = [409, { error: "librespot device not found" }];
+            spotify.load("spotify:track:x");
+            spotify.play();
+            compare(sent("/player/load"), 1);
+            verify(!spotify.isPlaying);
+            root.answers["POST /player/load"] = [200, { ok: true, duration_ms: 200000 }];
+            root.answers["POST /player/volume"] = [200, { ok: true }];
+            spotify.play();
+            compare(sent("/player/load"), 2);
+            verify(spotify.isPlaying);
         }
 
         // 12:32:47: a play answered 200 that did not reach librespot.
