@@ -45,6 +45,9 @@ import QtMultimedia
  * the engine says so (a load fails, a play or pause takes what the daemon
  * reports) and the journal has a line for each step.
  *
+ * A track the daemon reports an error for (librespot got no key for it,
+ * twice) fails instead of counting on over silence.
+ *
  * A load is sent once: a play while its answer is still on its way waits
  * for it. Sent twice (Q25, 18:09:34 and 18:09:35), librespot loaded the
  * track twice and asked Spotify twice for its key, on a slow network.
@@ -288,6 +291,17 @@ Item {
             return;
         var nearEnd = _duration > 0 && _position >= _duration - 3000;
         var ours = !s.uri || s.uri === _path;
+        // librespot got no key for the track, even loaded once more: it plays
+        // silence, whatever it says.
+        if (s.error && ours) {
+            _expect = null;
+            _loaded = false;
+            _playing = false;
+            _error = s.error;
+            console.warn("Music: Spotify cannot play " + _path + ": " + s.error);
+            failed(_error);
+            return;
+        }
         if (s.duration_ms > 0 && ours)
             _duration = s.duration_ms;
         // Stopped near the end, or moved on to something else: the end.

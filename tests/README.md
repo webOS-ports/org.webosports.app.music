@@ -51,7 +51,11 @@ writing calls.
   activates the media session again. A play while a load is on its way
   sends no second load, and a refused load can be asked for again
   (`test_a_play_while_the_load_is_on_its_way_sends_no_second_load`,
-  `test_a_refused_load_can_be_sent_again`); mutation-checked 2026-11-25.
+  `test_a_refused_load_can_be_sent_again`), and a track the daemon reports
+  an error for (no key from Spotify) fails once, an error about another
+  track is not its own (`test_a_track_without_a_key_fails`,
+  `test_an_error_about_another_track_is_not_ours`); mutation-checked
+  2026-11-25.
   A web address handed to the app (`{target: "http://..."}`) becomes a
   stream of the Internet Radio service (`radio:u.<base64url>`), titled
   after its last path part or its host (`test_web_stream_path`,

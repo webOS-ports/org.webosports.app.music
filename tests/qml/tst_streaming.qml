@@ -1030,6 +1030,40 @@ Item {
             compare(sent("/player/load"), 1);
         }
 
+        // Q25, 18:09:41: librespot got no key for the track and played
+        // silence; once the daemon says so the track fails, once.
+        function test_a_track_without_a_key_fails() {
+            playing();
+            var reasons = [];
+            var onFailed = function(r) { reasons.push(r); };
+            spotify.failed.connect(onFailed);
+            ignoreWarning("Music: Spotify cannot play spotify:track:x: no key");
+            spotify._onStatus(200, { is_playing: false, position_ms: 0, uri: "spotify:track:x",
+                                     error: "no key" }, spotify._commands);
+            compare(reasons, ["no key"]);
+            verify(!spotify.isPlaying);
+            compare(spotify.errorString, "no key");
+            // no more reports are taken, and none fails it again
+            spotify._onStatus(200, { is_playing: false, uri: "spotify:track:x", error: "no key" },
+                              spotify._commands);
+            compare(reasons.length, 1);
+            spotify.failed.disconnect(onFailed);
+        }
+
+        // An error about another track is not this one's.
+        function test_an_error_about_another_track_is_not_ours() {
+            playing();
+            var reasons = [];
+            var onFailed = function(r) { reasons.push(r); };
+            spotify.failed.connect(onFailed);
+            reportAs("spotify:track:other", true, 1000);
+            spotify._onStatus(200, { is_playing: false, uri: "spotify:track:other", error: "no key" },
+                              spotify._commands);
+            compare(reasons.length, 0);
+            verify(spotify.isPlaying);
+            spotify.failed.disconnect(onFailed);
+        }
+
         // A load answered "no" can be asked for again.
         function test_a_refused_load_can_be_sent_again() {
             root.answers["POST /player/load"] = [409, { error: "librespot device not found" }];
