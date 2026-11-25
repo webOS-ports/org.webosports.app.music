@@ -20,7 +20,8 @@ import LunaNext.Common 0.1
 
 /*
  * The bar along the bottom of every page while something is queued: the
- * playing track, play/pause and next, and a thin line for how far it is.
+ * playing track, previous, play/pause and next, and a thin line for how far
+ * it is.
  * Tap it, or swipe it up, for Now Playing; swipe sideways for the next or
  * previous track.
  */
@@ -103,6 +104,13 @@ Rectangle {
         anchors.verticalCenter: parent.verticalCenter
 
         IconButton {
+            objectName: "miniPrevious"
+            image: "previous"
+            label: "Previous"
+            accent: mini.theme.accent
+            onClicked: mini.player.previous()
+        }
+        IconButton {
             objectName: "miniPlayPause"
             image: mini.player && mini.player.playing ? "pause" : "play"
             label: mini.player && mini.player.playing ? "Pause" : "Play"
@@ -110,6 +118,7 @@ Rectangle {
             onClicked: mini.player.toggle()
         }
         IconButton {
+            objectName: "miniNext"
             image: "next"
             label: "Next"
             accent: mini.theme.accent

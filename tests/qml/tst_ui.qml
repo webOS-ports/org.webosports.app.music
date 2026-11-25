@@ -1064,7 +1064,19 @@ Item {
             root.app.player.previous();
             compare(root.app.player.current.title, "Deep 1-1");
             verify(root.app.findChild ? true : true);
-            verify(findByName(root.app.contentItem, "miniPlayer").visible);
+            var mini = findByName(root.app.contentItem, "miniPlayer");
+            verify(mini.visible);
+            // The bar's previous, play/pause and next.
+            mouseClick(findByName(mini, "miniNext"));
+            compare(root.app.player.current.title, "Deep 1-2");
+            mouseClick(findByName(mini, "miniPrevious"));
+            compare(root.app.player.current.title, "Deep 1-1");
+            tryVerify(function() { return root.app.player.playing; }, 5000);
+            mouseClick(findByName(mini, "miniPlayPause"));
+            verify(!root.app.player.playing);
+            mouseClick(findByName(mini, "miniPlayPause"));
+            verify(root.app.player.playing);
+            screenshot("mini-player");
         }
 
         function test_05_now_playing() {
