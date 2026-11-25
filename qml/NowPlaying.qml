@@ -56,6 +56,12 @@ Rectangle {
 
     readonly property var track: player ? player.current : null
     readonly property bool episode: !!track && Podcasts.isEpisode(track.path)
+    // The service the track plays from, as on the dashboard: its account's
+    // icon, and its name after the artist.
+    readonly property string _provider: Streaming.providerOf(track)
+    readonly property var _service: _provider && appWindow.streaming ? appWindow.streaming.provider(_provider) : null
+    readonly property string sourceText: Streaming.sourceLine(track, _service ? _service.name : "")
+    readonly property string sourceIcon: _service && _service.icon ? _service.icon : ""
     // { format, formats } of a streamed track whose service has a choice.
     readonly property var format: player ? player.currentFormat : null
     readonly property bool landscape: width >= height
@@ -377,15 +383,33 @@ Rectangle {
                     maximumLineCount: 2
                     elide: Text.ElideRight
                 }
-                Text {
+                Row {
                     width: parent.width
-                    text: np.track ? np.track.artist : ""
-                    color: np.theme.accent
-                    font.pixelSize: np.theme.fontMedium
-                    elide: Text.ElideRight
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: appWindow.openArtistOf(np.track)
+                    spacing: Units.gu(0.6)
+                    Image {
+                        id: npSourceIcon
+                        objectName: "nowPlayingSourceIcon"
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: np.sourceIcon !== ""
+                        source: np.sourceIcon
+                        width: visible ? Units.gu(2.2) : 0
+                        height: width
+                        sourceSize.width: Units.gu(2.2)
+                        sourceSize.height: Units.gu(2.2)
+                        fillMode: Image.PreserveAspectFit
+                    }
+                    Text {
+                        objectName: "nowPlayingArtist"
+                        width: parent.width - (npSourceIcon.visible ? npSourceIcon.width + parent.spacing : 0)
+                        // a file: its artist as the library has it
+                        text: np._provider ? np.sourceText : (np.track ? np.track.artist : "")
+                        color: np.theme.accent
+                        font.pixelSize: np.theme.fontMedium
+                        elide: Text.ElideRight
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: appWindow.openArtistOf(np.track)
+                        }
                     }
                 }
             }

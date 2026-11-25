@@ -1362,6 +1362,32 @@ Item {
             fake.destroy();
         }
 
+        // The bar at the bottom says which service the track plays from, as
+        // the dashboard does.
+        function test_20c_bar_shows_the_service() {
+            var fake = Qt.createQmlObject('import QtQuick; QtObject { property var current: null; '
+                                          + 'property bool playing: false; property bool hasNext: false; '
+                                          + 'property real position: 0; property real duration: 0 }', test);
+            var icon = Qt.resolvedUrl("../../qml/images/play.svg");
+            var store = { provider: function(id) { return id === "spotify" ? { id: "spotify", name: "Spotify", icon: icon } : null; } };
+            fake.current = { path: "spotify:track:5", title: "Can You Feel It", artist: "The Jacksons",
+                             album: "Triumph", provider: "spotify", remote: true };
+            var c = Qt.createComponent(Qt.resolvedUrl("../../qml/components/MiniPlayer.qml"));
+            compare(c.status, Component.Ready, c.errorString());
+            var bar = c.createObject(root.app.contentItem, { player: fake, theme: root.app.theme, streaming: store,
+                                                             width: 480, height: 60 });
+            verify(bar);
+            compare(findByName(bar, "miniSource").text, "The Jacksons \u00b7 Spotify");
+            var img = findByName(bar, "miniSourceIcon");
+            verify(img.visible);
+            compare(String(img.source), String(icon));
+            fake.current = { path: "/media/internal/music/a.mp3", title: "Deep 1-1", artist: "Blue Band", album: "Deep Water" };
+            compare(findByName(bar, "miniSource").text, "Blue Band");
+            verify(!img.visible);
+            bar.destroy();
+            fake.destroy();
+        }
+
         // Closing the card on paused music, or swiping the dashboard, keeps
         // it away until the music plays or the card is back.
         function test_21_dashboard_stays_away() {

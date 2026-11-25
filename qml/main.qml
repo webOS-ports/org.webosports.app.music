@@ -863,6 +863,7 @@ WebOSWindow {
         visible: player.hasQueue
         player: appWindow.player
         theme: themeObject
+        streaming: appWindow.streaming
         onOpenRequested: appWindow.openNowPlaying()
     }
 
