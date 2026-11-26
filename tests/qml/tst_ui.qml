@@ -1118,6 +1118,55 @@ Item {
             settle();
         }
 
+        // A service that plays only previews (a Tidal account whose
+        // subscription ended): "Preview" in Now Playing and after the
+        // service in the line under the title, the reason in a toast the
+        // first time and on a tap of the badge.
+        function test_18b_streaming_preview() {
+            var why = "Tidal plays 30-second previews: this Tidal account has no active subscription";
+            root.app.streaming.transport = function(method, url, body, done) {
+                var path = url.replace(/^http:\/\/127\.0\.0\.1:8730/, "").replace(/\?.*$/, "");
+                if (method === "GET" && path === "/providers")
+                    return done(200, { providers: [{ id: "tidal", name: "Tidal" }] });
+                if (method === "POST" && path === "/provider/tidal/resolve")
+                    return done(200, { url: "file://" + (root.fixtures + "/Various/Summer Mix/01 Ana Ray - Sun.ogg")
+                                                       .split("/").map(encodeURIComponent).join("/"),
+                                       format: "FLAC", formats: ["FLAC"], preview: why });
+                done(404, { error: "no" });
+            };
+            root.app.streaming.refresh();
+            root.app.lastNotification = "";
+            root.app._previewsTold = [];
+            root.app.player.playTracks([{ path: "tidal:542289", title: "Ghosts", artist: "Michael Jackson", album: "Blood on the Dance Floor",
+                                          provider: "tidal", remote: true, duration: 3000 }], 0, false);
+            tryVerify(function() { return root.app.player.playing; }, 5000);
+            compare(root.app.player.currentPreview, why);
+            compare(root.app.lastNotification, why);
+            root.app.openNowPlaying();
+            var np = findByName(root.app.contentItem, "nowPlaying");
+            tryCompare(np, "y", 0, 3000);
+            var badge = findByName(np, "previewBadge");
+            verify(badge.visible);
+            verify(findByName(np, "nowPlayingArtist").text.indexOf("\u00b7 Preview") > 0, findByName(np, "nowPlayingArtist").text);
+            wait(400); // the slide in
+            screenshot("now-playing-preview");
+            // told once a session; a tap on the badge tells it again
+            root.app.lastNotification = "";
+            root.app.player.playTracks([{ path: "tidal:1781887", title: "Billie Jean", artist: "Michael Jackson", album: "Thriller",
+                                          provider: "tidal", remote: true, duration: 3000 }], 0, false);
+            tryVerify(function() { return root.app.player.playing && root.app.player.current.path === "tidal:1781887"; }, 5000);
+            compare(root.app.player.currentPreview, why);
+            compare(root.app.lastNotification, "");
+            mouseClick(badge);
+            compare(root.app.lastNotification, why);
+            // a file on the device: no badge
+            root.app.player.playTracks(root.app.library.lib.songs.slice(0, 1), 0, false);
+            tryVerify(function() { return !badge.visible; }, 3000);
+            root.app.player.clearQueue();
+            root.app.closeNowPlaying();
+            settle();
+        }
+
         // Every main screen at every size the app has to look right at:
         // a phone (480x800, and the small 320x480), the Q25's square
         // (720x720), a tablet both ways (1024x768, 768x1024).
@@ -1362,6 +1411,32 @@ Item {
             fake.destroy();
         }
 
+        // The bar at the bottom says which service the track plays from, as
+        // the dashboard does.
+        function test_20c_bar_shows_the_service() {
+            var fake = Qt.createQmlObject('import QtQuick; QtObject { property var current: null; '
+                                          + 'property bool playing: false; property bool hasNext: false; '
+                                          + 'property real position: 0; property real duration: 0 }', test);
+            var icon = Qt.resolvedUrl("../../qml/images/play.svg");
+            var store = { provider: function(id) { return id === "spotify" ? { id: "spotify", name: "Spotify", icon: icon } : null; } };
+            fake.current = { path: "spotify:track:5", title: "Can You Feel It", artist: "The Jacksons",
+                             album: "Triumph", provider: "spotify", remote: true };
+            var c = Qt.createComponent(Qt.resolvedUrl("../../qml/components/MiniPlayer.qml"));
+            compare(c.status, Component.Ready, c.errorString());
+            var bar = c.createObject(root.app.contentItem, { player: fake, theme: root.app.theme, streaming: store,
+                                                             width: 480, height: 60 });
+            verify(bar);
+            compare(findByName(bar, "miniSource").text, "The Jacksons \u00b7 Spotify");
+            var img = findByName(bar, "miniSourceIcon");
+            verify(img.visible);
+            compare(String(img.source), String(icon));
+            fake.current = { path: "/media/internal/music/a.mp3", title: "Deep 1-1", artist: "Blue Band", album: "Deep Water" };
+            compare(findByName(bar, "miniSource").text, "Blue Band");
+            verify(!img.visible);
+            bar.destroy();
+            fake.destroy();
+        }
+
         // Closing the card on paused music, or swiping the dashboard, keeps
         // it away until the music plays or the card is back.
         function test_21_dashboard_stays_away() {
@@ -1597,6 +1672,33 @@ Item {
             root.app.prefs.replayGain = "auto";
             root.app.player.jumpTo(0);
             screenshot("now-playing");
+            // A near-square screen (the Q25): cover and track side by side,
+            // the buttons along the bottom at their full size, previous and
+            // next as large as shuffle and repeat. Title and artist scroll
+            // rather than elide (MarqueeText, tested in luneos-components).
+            root.app.width = 720;
+            root.app.height = 672;
+            settle();
+            tryVerify(function() { return np.width === 720 && np.height === 672; }, 2000, "Now Playing at " + np.width + "x" + np.height);
+            verify(np.square);
+            var band = findByName(np, "previousButton").parent.parent;
+            compare(band.width, np.width);
+            var cover = findByName(np, "nowPlayingCover");
+            var title = findByName(np, "nowPlayingTitle");
+            verify(title.mapToItem(np, 0, 0).x >= cover.mapToItem(np, 0, 0).x + cover.width, "the track beside the cover");
+            verify(band.y >= cover.mapToItem(np, 0, cover.height).y, "the buttons under the cover");
+            compare(findByName(np, "previousButton").width, findByName(np, "shuffleButton").width);
+            verify(findByName(np, "previousButton").width >= 54, "full-size buttons");
+            verify(findByName(np, "previousButton").iconSize >= findByName(np, "shuffleButton").iconSize);
+            compare(findByName(np, "nextButton").width, findByName(np, "previousButton").width);
+            verify(title.overflow !== undefined && findByName(np, "nowPlayingArtist").overflow !== undefined);
+            compare(title.overflow, 0);
+            screenshot("now-playing-square");
+            root.app.width = 480;
+            root.app.height = 800;
+            settle();
+            tryVerify(function() { return !np.square && np.height === 800; }, 2000);
+            waitForRendering(np);
             np.showLyrics = true;
             tryVerify(function() { return np.lyricsText.indexOf("Chorus line") >= 0; });
             // The song's own lyrics: no credit.

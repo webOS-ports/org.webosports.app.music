@@ -232,10 +232,12 @@ Item {
         return p ? p.name : Streaming.displayName(id);
     }
 
-    /* done(url, error, formats): what plays a streamed track, in format (a
-     * label from an earlier formats) or else the one preferred for its
-     * service. formats is { format, formats: [labels] } - the one it plays in
-     * and the ones it has - when the service has a choice, else null. */
+    /* done(url, error, formats, preview): what plays a streamed track, in
+     * format (a label from an earlier formats) or else the one preferred for
+     * its service. formats is { format, formats: [labels] } - the one it
+     * plays in and the ones it has - when the service has a choice, else
+     * null. preview says why the service gives only a preview of the track
+     * (a Tidal account without a subscription), "" for the whole track. */
     function resolve(track, done, format) {
         var parts = Streaming.split(track.path);
         if (!parts) {
@@ -249,9 +251,9 @@ Item {
         transport("POST", baseUrl + "/provider/" + encodeURIComponent(parts.provider) + "/resolve",
                   body, function(code, data) {
             if (code === 200 && data && data.url)
-                done(data.url, "", Streaming.formats(data));
+                done(data.url, "", Streaming.formats(data), Streaming.previewOf(data));
             else
-                done("", (data && data.error) ? data.error : "The streaming service is not running.", null);
+                done("", (data && data.error) ? data.error : "The streaming service is not running.", null, "");
         });
     }
 }

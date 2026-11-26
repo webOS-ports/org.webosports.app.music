@@ -7,7 +7,8 @@
 The host build is this project built for the host (`cmake -S . -B <dir>
 -DBUILD_TESTING=ON`, TagLib from a sysroot works: see below); its plugin
 is the real one. luneos-components needs its desktop build, ActionSheet
-and FastScroller, ConfirmDialog and PromptDialog with ask(), and the
+and FastScroller, ConfirmDialog and PromptDialog with ask(), MarqueeText,
+and the
 desktop stand-in Db8Model with status, the error properties and the
 writing calls.
 
@@ -35,7 +36,8 @@ writing calls.
   there, Rename and Use in the station menu, Remove from List), a scan, the
   service going), library, covers (embedded, folder.jpg above a disc folder,
   none), every category, album page and playback, Now Playing (ReplayGain in
-  every mode, lyrics, shuffle/repeat, favourite, cover tap regions), menus,
+  every mode, lyrics, shuffle/repeat, favourite, cover tap regions, the
+  near-square layout with the buttons along the bottom), menus,
   queue, playlists (Rename, Delete and New Playlist through their
   dialogs' buttons), playlist files, search, folders, opening a file, launch
   actions and exhibition, preferences, song info, play counts, sleep timer

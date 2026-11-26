@@ -200,8 +200,9 @@ Tablet (TouchPad, 1024x768):
 - Qt 6 (Quick, Multimedia with the GStreamer backend) and the GStreamer
   plugins for the formats; TagLib 2.
 - luneos-components: the LuneOS Controls style, LuneOS.Forms, and from
-  LuneOS.Components `ActionSheet`, `FastScroller`, and `ConfirmDialog` and
-  `PromptDialog` with `ask()` (the prompt with its `valid` check) - a
+  LuneOS.Components `ActionSheet`, `FastScroller`, `MarqueeText`, and
+  `ConfirmDialog` and `PromptDialog` with `ask()` (the prompt with its
+  `valid` check) - a
   luneos-components that has these; from LuneOS.Service `Db8Model` with
   all pages, db8's errors and the writing calls (`allPages`, `status`,
   `error()`, `put`/`merge`/`del`/`putKind`) for the library, play counts

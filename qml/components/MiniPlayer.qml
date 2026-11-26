@@ -18,10 +18,12 @@ import QtQuick
 
 import LunaNext.Common 0.1
 
+import "../js/Streaming.js" as Streaming
+
 /*
  * The bar along the bottom of every page while something is queued: the
- * playing track, previous, play/pause and next, and a thin line for how far
- * it is.
+ * playing track and the service it plays from (as on the dashboard),
+ * previous, play/pause and next, and a thin line for how far it is.
  * Tap it, or swipe it up, for Now Playing; swipe sideways for the next or
  * previous track.
  */
@@ -30,12 +32,19 @@ Rectangle {
 
     property var player
     property var theme
+    // StreamingStore: the services' names and icons
+    property var streaming: null
 
     signal openRequested()
 
     color: theme.darkSurface
 
     readonly property var track: player ? player.current : null
+    readonly property string _provider: Streaming.providerOf(track)
+    readonly property var _service: _provider && streaming ? streaming.provider(_provider) : null
+    readonly property string sourceText: Streaming.sourceLine(track, _service ? _service.name : "",
+                                                              !!(player && player.currentPreview))
+    readonly property string sourceIcon: _service && _service.icon ? _service.icon : ""
 
     Rectangle {
         anchors.top: parent.top
@@ -88,12 +97,29 @@ Rectangle {
             font.pixelSize: mini.theme.fontMedium
             elide: Text.ElideRight
         }
-        Text {
+        Row {
             width: parent.width
-            text: mini.track ? mini.track.artist : ""
-            color: mini.theme.darkSecondaryText
-            font.pixelSize: mini.theme.fontSmall
-            elide: Text.ElideRight
+            spacing: Units.gu(0.6)
+            Image {
+                id: miniSourceIcon
+                objectName: "miniSourceIcon"
+                anchors.verticalCenter: parent.verticalCenter
+                visible: mini.sourceIcon !== ""
+                source: mini.sourceIcon
+                width: visible ? Units.gu(1.8) : 0
+                height: width
+                sourceSize.width: Units.gu(1.8)
+                sourceSize.height: Units.gu(1.8)
+                fillMode: Image.PreserveAspectFit
+            }
+            Text {
+                objectName: "miniSource"
+                width: parent.width - (miniSourceIcon.visible ? miniSourceIcon.width + parent.spacing : 0)
+                text: mini._provider ? mini.sourceText : (mini.track ? mini.track.artist : "")
+                color: mini.theme.darkSecondaryText
+                font.pixelSize: mini.theme.fontSmall
+                elide: Text.ElideRight
+            }
         }
     }
 

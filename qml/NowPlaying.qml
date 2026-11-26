@@ -17,6 +17,7 @@
 import QtQuick
 
 import LunaNext.Common 0.1
+import LuneOS.Components 1.0 as Components
 
 import "components"
 import "js/Art.js" as Art
@@ -31,7 +32,10 @@ import "js/Streaming.js" as Streaming
  * Remix had it); hold Previous or Next to rewind or fast-forward, faster
  * the longer they are held. Swipe down or use the back gesture to go back
  * to the library.
- * Cover and controls sit side by side when the window is wider than tall.
+ * Cover and controls sit side by side when the window is clearly wider than
+ * tall. On a near-square screen (the Q25) the cover and the track sit side
+ * by side and the buttons take the whole width under them, so they keep
+ * their size. Title, artist and album scroll when they do not fit.
  */
 Rectangle {
     id: np
@@ -56,9 +60,21 @@ Rectangle {
 
     readonly property var track: player ? player.current : null
     readonly property bool episode: !!track && Podcasts.isEpisode(track.path)
+    // The service the track plays from, as on the dashboard: its account's
+    // icon, and its name after the artist.
+    readonly property string _provider: Streaming.providerOf(track)
+    readonly property var _service: _provider && appWindow.streaming ? appWindow.streaming.provider(_provider) : null
+    readonly property string sourceText: Streaming.sourceLine(track, _service ? _service.name : "",
+                                                              !!(player && player.currentPreview))
+    readonly property string sourceIcon: _service && _service.icon ? _service.icon : ""
     // { format, formats } of a streamed track whose service has a choice.
     readonly property var format: player ? player.currentFormat : null
+    // Why the service plays only a preview of the track, "" when it plays whole.
+    readonly property string preview: player ? player.currentPreview : ""
     readonly property bool landscape: width >= height
+    // Near-square: side by side, but the buttons in a full-width band below.
+    readonly property bool square: landscape && width < height * 1.25
+    readonly property real bottomMargin: Units.gu(1.5)
     readonly property bool favorite: track !== null && stats.revision >= 0 && stats.isFavorite(track.path)
     // Who to look up: not a streamed track's service, standing in for an
     // artist it did not give (js/Streaming.js), nor the library's "Unknown
@@ -224,13 +240,14 @@ Rectangle {
                 font.pixelSize: np.theme.fontTiny
                 font.letterSpacing: 1
             }
-            Text {
+            Components.MarqueeText {
+                objectName: "nowPlayingAlbum"
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
                 text: np.track ? np.track.album : ""
                 color: np.theme.darkText
                 font.pixelSize: np.theme.fontSmall
-                elide: Text.ElideRight
+                running: np.visible
                 MouseArea {
                     anchors.fill: parent
                     onClicked: appWindow.openAlbumOf(np.track)
@@ -255,14 +272,17 @@ Rectangle {
         anchors.top: topBar.bottom
         anchors.left: parent.left
         width: np.landscape ? parent.width * 0.5 : parent.width
-        height: np.landscape ? parent.height - topBar.height : parent.height - topBar.height - controls.height
+        height: np.square ? controls.y - topBar.height - Units.gu(1)
+              : np.landscape ? parent.height - topBar.height
+              : info.y - topBar.height
 
         Cover {
 
             onLight: false
             id: bigCover
             objectName: "nowPlayingCover"
-            readonly property real coverSize: Math.max(Units.gu(10), Math.min(parent.width - Units.gu(4), parent.height - Units.gu(3)))
+            readonly property real coverSize: Math.max(Units.gu(10), Math.min(parent.width - Units.gu(np.square ? 2 : 4),
+                                                                              parent.height - Units.gu(np.square ? 1 : 3)))
             width: coverSize
             height: coverSize
             x: (parent.width - width) / 2 + swipe.offset
@@ -337,22 +357,20 @@ Rectangle {
         }
     }
 
-    // --- track, seek bar, buttons -----------------------------------------
+    // --- track and seek bar ----------------------------------------------
+    // Placed by x and y, not anchors, for the three layouts: portrait (cover,
+    // track, buttons from top to bottom), landscape (cover left; track and
+    // buttons right, centred together) and square (cover and track side by
+    // side; the buttons along the bottom, the whole width).
     Column {
-        id: controls
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: Units.gu(1.5)
-        anchors.right: parent.right
+        id: info
+        x: np.landscape ? parent.width * 0.5 : 0
         width: np.landscape ? parent.width * 0.5 : parent.width
-        // Not a conditional top anchor: anchored at both ends once, a
-        // Column keeps that height when the anchor goes (turning from
-        // landscape to portrait), and its buttons would float up.
-        height: np.landscape ? np.height - topBar.height - Units.gu(1.5) : implicitHeight
+        y: np.square ? topBar.height + Math.max(0, (artArea.height - height) / 2)
+         : np.landscape ? topBar.height + Math.max(0, (np.height - topBar.height - np.bottomMargin
+                                                      - (height + spacing + controls.height)) / 2)
+         : controls.y - spacing - height
         spacing: Units.gu(1)
-        // The buttons' size: their usual one, smaller where the column is
-        // narrow (beside the cover on the Q25's square) so all five fit.
-        readonly property real btn: Math.min(Math.max(Units.gu(5.5), 54), (width - Units.gu(2)) / 6.8)
-        topPadding: np.landscape ? Math.max(0, (height - (implicitHeight - topPadding)) / 2) : 0
 
         Item {
             width: parent.width
@@ -361,31 +379,45 @@ Rectangle {
             Column {
                 id: titleCol
                 anchors.left: parent.left
-                anchors.leftMargin: controls.width < Units.gu(45) ? Units.gu(1.5) : Units.gu(2.5)
+                anchors.leftMargin: info.width < Units.gu(45) ? Units.gu(1.5) : Units.gu(2.5)
                 anchors.right: heart.left
                 spacing: Units.gu(0.3)
-                Text {
+                Components.MarqueeText {
                     objectName: "nowPlayingTitle"
                     width: parent.width
                     text: np.track ? np.track.title : ""
                     color: np.theme.darkText
                     font.pixelSize: np.theme.fontLarge
                     font.weight: Font.DemiBold
-                    // Two lines before eliding: beside the cover there is
-                    // only half the width.
-                    wrapMode: Text.Wrap
-                    maximumLineCount: 2
-                    elide: Text.ElideRight
+                    running: np.visible
                 }
-                Text {
+                Row {
                     width: parent.width
-                    text: np.track ? np.track.artist : ""
-                    color: np.theme.accent
-                    font.pixelSize: np.theme.fontMedium
-                    elide: Text.ElideRight
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: appWindow.openArtistOf(np.track)
+                    spacing: Units.gu(0.6)
+                    Image {
+                        id: npSourceIcon
+                        objectName: "nowPlayingSourceIcon"
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: np.sourceIcon !== ""
+                        source: np.sourceIcon
+                        width: visible ? Units.gu(2.2) : 0
+                        height: width
+                        sourceSize.width: Units.gu(2.2)
+                        sourceSize.height: Units.gu(2.2)
+                        fillMode: Image.PreserveAspectFit
+                    }
+                    Components.MarqueeText {
+                        objectName: "nowPlayingArtist"
+                        width: parent.width - (npSourceIcon.visible ? npSourceIcon.width + parent.spacing : 0)
+                        // a file: its artist as the library has it
+                        text: np._provider ? np.sourceText : (np.track ? np.track.artist : "")
+                        color: np.theme.accent
+                        font.pixelSize: np.theme.fontMedium
+                        running: np.visible
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: appWindow.openArtistOf(np.track)
+                        }
                     }
                 }
             }
@@ -411,50 +443,92 @@ Rectangle {
             textColor: np.theme.darkSecondaryText
             onSeekRequested: function(ms) { np.player.seek(ms); }
 
-            // The streamed track's format, between the times; a tap offers
-            // the others when there are any.
-            Rectangle {
-                id: formatBadge
-                objectName: "formatBadge"
-                readonly property bool switchable: !!(np.format && np.format.formats.length > 1)
-                visible: np.format !== null
+            // Between the times: "Preview" when the service plays only a
+            // preview of the track (a tap says why), and the streamed track's
+            // format (a tap offers the others when there are any).
+            Row {
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
-                width: formatRow.implicitWidth + Units.gu(1.6)
-                height: formatText.implicitHeight + Units.gu(0.4)
-                radius: height / 2
-                color: "transparent"
-                border.width: 1
-                border.color: switchable ? np.theme.accent : np.theme.darkSecondaryText
-                Row {
-                    id: formatRow
-                    anchors.centerIn: parent
-                    spacing: Units.gu(0.3)
+                spacing: Units.gu(0.6)
+
+                Rectangle {
+                    id: previewBadge
+                    objectName: "previewBadge"
+                    visible: np.preview !== ""
+                    width: previewText.implicitWidth + Units.gu(1.6)
+                    height: previewText.implicitHeight + Units.gu(0.4)
+                    radius: height / 2
+                    color: np.theme.accent
                     Text {
-                        id: formatText
-                        objectName: "formatText"
-                        text: np.format ? np.format.format : ""
-                        color: formatBadge.switchable ? np.theme.darkText : np.theme.darkSecondaryText
+                        id: previewText
+                        anchors.centerIn: parent
+                        text: "Preview"
+                        color: "white"
                         font.pixelSize: np.theme.fontTiny
+                        font.weight: Font.DemiBold
                     }
-                    // The device fonts have no ▾.
-                    Image {
-                        anchors.verticalCenter: parent.verticalCenter
-                        visible: formatBadge.switchable
-                        source: Qt.resolvedUrl("images/down.svg")
-                        sourceSize.width: formatText.font.pixelSize
-                        sourceSize.height: formatText.font.pixelSize
+                    MouseArea {
+                        anchors.fill: parent
+                        anchors.margins: -Units.gu(1)
+                        onClicked: appWindow.notify(np.preview)
                     }
                 }
-                MouseArea {
-                    anchors.fill: parent
-                    // A finger-sized target around the small badge.
-                    anchors.margins: -Units.gu(1)
-                    enabled: formatBadge.switchable
-                    onClicked: appWindow.chooseFormat()
+
+                Rectangle {
+                    id: formatBadge
+                    objectName: "formatBadge"
+                    readonly property bool switchable: !!(np.format && np.format.formats.length > 1)
+                    visible: np.format !== null
+                    width: formatRow.implicitWidth + Units.gu(1.6)
+                    height: formatText.implicitHeight + Units.gu(0.4)
+                    radius: height / 2
+                    color: "transparent"
+                    border.width: 1
+                    border.color: switchable ? np.theme.accent : np.theme.darkSecondaryText
+                    Row {
+                        id: formatRow
+                        anchors.centerIn: parent
+                        spacing: Units.gu(0.3)
+                        Text {
+                            id: formatText
+                            objectName: "formatText"
+                            text: np.format ? np.format.format : ""
+                            color: formatBadge.switchable ? np.theme.darkText : np.theme.darkSecondaryText
+                            font.pixelSize: np.theme.fontTiny
+                        }
+                        // The device fonts have no ▾.
+                        Image {
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: formatBadge.switchable
+                            source: Qt.resolvedUrl("images/down.svg")
+                            sourceSize.width: formatText.font.pixelSize
+                            sourceSize.height: formatText.font.pixelSize
+                        }
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        // A finger-sized target around the small badge.
+                        anchors.margins: -Units.gu(1)
+                        enabled: formatBadge.switchable
+                        onClicked: appWindow.chooseFormat()
+                    }
                 }
             }
         }
+
+    }
+
+    // --- buttons ---------------------------------------------------------
+    Column {
+        id: controls
+        x: np.landscape && !np.square ? parent.width * 0.5 : 0
+        width: np.landscape && !np.square ? parent.width * 0.5 : parent.width
+        y: np.landscape && !np.square ? info.y + info.height + info.spacing
+         : np.height - np.bottomMargin - height
+        spacing: Units.gu(1)
+        // The buttons' size: their usual one, smaller where the column is
+        // narrow so all five fit.
+        readonly property real btn: Math.min(Math.max(Units.gu(5.5), 54), (width - Units.gu(2)) / 6.8)
 
         Row {
             anchors.horizontalCenter: parent.horizontalCenter

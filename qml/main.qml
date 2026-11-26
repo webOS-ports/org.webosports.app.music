@@ -212,6 +212,15 @@ WebOSWindow {
         }
         streamingTransport: streaming.transport
         fmRadio: fmRadio
+        // A service that plays only previews (a Tidal account whose
+        // subscription ended) says why, the first time this session; Now
+        // Playing's "Preview" badge says it again on a tap.
+        onCurrentPreviewChanged: {
+            if (currentPreview !== "" && appWindow._previewsTold.indexOf(currentPreview) < 0) {
+                appWindow._previewsTold = appWindow._previewsTold.concat([currentPreview]);
+                appWindow.notify(currentPreview);
+            }
+        }
         // An episode resumes where the podcast service says it was left,
         // whatever the preference: that is what podcasts do.
         resumeLookup: function(track) {
@@ -863,6 +872,7 @@ WebOSWindow {
         visible: player.hasQueue
         player: appWindow.player
         theme: themeObject
+        streaming: appWindow.streaming
         onOpenRequested: appWindow.openNowPlaying()
     }
 
@@ -1461,6 +1471,8 @@ WebOSWindow {
      */
     property string notice: ""
     property string lastNotification: ""
+    // The preview reasons told this session (Player.currentPreview).
+    property var _previewsTold: []
 
     function notify(text) {
         lastNotification = text;
