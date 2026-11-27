@@ -25,11 +25,32 @@
  * been in front), exhibition (the exhibition window is open), dismissed
  * (swiped away, or the card closed on paused music).
  *
- * cardSeen: a restored queue exists before the card first takes the focus,
- * and paused music must not put up a dashboard during the launch.
+ * cardSeen: a restored queue exists before the card first comes to the
+ * front, and paused music must not put up a dashboard during the launch.
  */
 function wanted(state) {
     if (!state.hasQueue || state.cardActive || state.exhibition || state.dismissed)
         return false;
     return state.playing || state.cardSeen;
+}
+
+/*
+ * Whether the card is in front, from the state the card shell gives its
+ * window (luna-next-cardshell publishes it: maximized or fullscreen on the
+ * stage, minimized in the card view or behind another card) rather than from
+ * the focus: tapping another app's dashboard, the volume bubble or anything
+ * else of the shell's takes the focus from a card still on the screen, and
+ * touching our own dashboard gives it to the application while the card
+ * stays away. Only a window the shell gives no state (on the desktop, an
+ * older shell) goes by the focus.
+ *
+ * state: maximized (maximized or fullscreen), away (minimized or hidden),
+ * focused (the card window has the focus).
+ */
+function cardInFront(state) {
+    if (state.maximized)
+        return true;
+    if (state.away)
+        return false;
+    return state.focused;
 }

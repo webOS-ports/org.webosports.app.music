@@ -714,11 +714,15 @@ WebOSWindow {
 
     // --- dashboard -------------------------------------------------------------------
 
-    // The card in front - the card window, not the application: touching or
-    // swiping the dashboard makes the application active too (its window takes
-    // the focus), and taking that for the card dropped the dashboard before the
-    // shell's close could reach it, the music playing on.
-    readonly property bool cardActive: appWindow.active
+    // The card in front, by the state the shell gives the card window and not
+    // by the focus (DashboardRule.cardInFront): tapping another dashboard
+    // takes the focus from a card still on the screen, which put ours up
+    // under it.
+    readonly property bool cardActive: DashboardRule.cardInFront({
+        maximized: appWindow.visibility === Window.Maximized || appWindow.visibility === Window.FullScreen,
+        away: appWindow.visibility === Window.Minimized || appWindow.visibility === Window.Hidden,
+        focused: appWindow.active
+    })
     // Back in front: an account may have been added or removed meanwhile.
     onCardActiveChanged: {
         if (!cardActive)
