@@ -25,7 +25,7 @@ TestCase {
 
     function state(changes) {
         var s = { hasQueue: true, playing: true, cardActive: false, cardSeen: true,
-                  exhibition: false, dismissed: false };
+                  exhibition: false, dismissed: false, locked: false };
         for (var k in changes)
             s[k] = changes[k];
         return s;
@@ -53,6 +53,23 @@ TestCase {
 
     function test_card_in_front() {
         verify(!DashboardRule.wanted(state({ cardActive: true })));
+    }
+
+    // Locked with the card in front: the card is behind the lock screen and
+    // the dashboard is the controls there, playing or paused.
+    function test_locked_card_in_front() {
+        verify(DashboardRule.wanted(state({ cardActive: true, locked: true })));
+        verify(DashboardRule.wanted(state({ cardActive: true, locked: true, playing: false })));
+    }
+
+    // The lock changes nothing else: nothing to show, swiped away, the
+    // exhibition window, a restored queue never played.
+    function test_locked_otherwise_as_unlocked() {
+        verify(!DashboardRule.wanted(state({ locked: true, hasQueue: false })));
+        verify(!DashboardRule.wanted(state({ locked: true, dismissed: true })));
+        verify(!DashboardRule.wanted(state({ locked: true, exhibition: true })));
+        verify(!DashboardRule.wanted(state({ locked: true, playing: false, cardSeen: false })));
+        verify(DashboardRule.wanted(state({ locked: true })));
     }
 
     function card(changes) {

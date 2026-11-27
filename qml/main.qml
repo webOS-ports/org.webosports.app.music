@@ -338,6 +338,29 @@ WebOSWindow {
     LunaService {
         id: service
         name: appWindow.appId
+        // Calls fail until the service is on the hub.
+        onInitialized: appWindow.watchLock()
+    }
+
+    /*
+     * Whether the screen is locked, for the dashboard on the lock screen
+     * (DashboardRule.wanted). Needs "display.query". The reply to the
+     * subscription and every change carry lockState.
+     */
+    property bool screenLocked: false
+
+    function watchLock() {
+        service.subscribe("luna://com.palm.display/control/lockStatus",
+                          JSON.stringify({ subscribe: true }), function(message) {
+            var r = {};
+            try {
+                r = JSON.parse(message.payload);
+            } catch (e) {
+                r = {};
+            }
+            if (r.lockState !== undefined)
+                appWindow.screenLocked = r.lockState === "locked";
+        }, function() {});
     }
 
     /*
@@ -763,12 +786,14 @@ WebOSWindow {
             cardActive: appWindow.cardActive,
             cardSeen: appWindow.cardSeen,
             exhibition: appWindow.exhibitionWanted,
-            dismissed: appWindow.dashboardDismissed
+            dismissed: appWindow.dashboardDismissed,
+            locked: appWindow.screenLocked
         })
         sourceComponent: Dashboard {
             player: appWindow.player
             theme: themeObject
             streaming: appWindow.streaming
+            locked: appWindow.screenLocked
             onOpenRequested: appWindow.openFromDashboard()
             // Only the user's swipe pauses; the Loader letting it go (the
             // card back in front) hides it too. It stays away until the music
