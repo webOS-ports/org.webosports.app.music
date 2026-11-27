@@ -55,6 +55,33 @@ TestCase {
         verify(!DashboardRule.wanted(state({ cardActive: true })));
     }
 
+    function card(changes) {
+        var s = { maximized: false, away: false, focused: false };
+        for (var k in changes)
+            s[k] = changes[k];
+        return s;
+    }
+
+    // Another app's dashboard (or the volume bubble) tapped: the focus goes,
+    // the card stays maximized on the screen.
+    function test_card_maximized_without_focus() {
+        verify(DashboardRule.cardInFront(card({ maximized: true })));
+        verify(DashboardRule.cardInFront(card({ maximized: true, focused: true })));
+    }
+
+    // In the card view, behind another card or closed (music playing on):
+    // away, even with our own dashboard touched and the focus ours.
+    function test_card_away() {
+        verify(!DashboardRule.cardInFront(card({ away: true })));
+        verify(!DashboardRule.cardInFront(card({ away: true, focused: true })));
+    }
+
+    // No state from a shell (the desktop): the focus decides.
+    function test_card_without_shell_state() {
+        verify(DashboardRule.cardInFront(card({ focused: true })));
+        verify(!DashboardRule.cardInFront(card({})));
+    }
+
     function test_exhibition() {
         verify(!DashboardRule.wanted(state({ exhibition: true })));
     }
