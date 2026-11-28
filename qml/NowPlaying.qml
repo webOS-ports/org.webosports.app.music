@@ -580,6 +580,7 @@ Rectangle {
                 width: controls.btn * 1.5
                 height: width
                 image: np.player && np.player.playing ? "pause" : "play"
+                busy: !!(np.player && np.player.waiting)
                 label: np.player && np.player.playing ? "Pause" : "Play"
                 iconSize: controls.btn * 0.72
                 filled: true
