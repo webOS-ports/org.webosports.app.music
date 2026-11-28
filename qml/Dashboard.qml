@@ -27,8 +27,10 @@ import "js/Streaming.js" as Streaming
  * card is not in front, also paused: the cover, the track, the service it
  * plays from (its icon and name after the artist), and previous /
  * play-pause / next.
- * A tap anywhere else brings the card back. The card shell takes any
- * floating window as a dashboard and reads its height from
+ * A tap anywhere else brings the card back, except on the lock screen: the
+ * buttons work there (clickable when locked, as the legacy app's and
+ * Jukie's dashboards), the card would open behind the lock. The card shell
+ * takes any floating window as a dashboard and reads its height from
  * LuneOS_dashheight when the window first shows, so those are set first.
  */
 WebOSWindow {
@@ -38,6 +40,8 @@ WebOSWindow {
     property var theme
     // StreamingStore: the services' names and icons
     property var streaming: null
+    // The screen is locked: the dashboard shows on the lock screen.
+    property bool locked: false
 
     signal openRequested()
     // Swiped away in the notification area: the music stops with it (a
@@ -63,6 +67,8 @@ WebOSWindow {
         setWindowProperty("LuneOS_window", "dashboard");
         setWindowProperty("LuneOS_metrics", "units");
         setWindowProperty("LuneOS_dashheight", "7");
+        // The lock screen passes taps on only to a dashboard that asks.
+        setWindowProperty("LuneOS_clickablewhenlocked", "true");
         // The note, in the notification area's row of icons; relative to
         // the app's folder.
         setWindowProperty("LuneOS_icon", "qml/images/dashboard-icon.png");
@@ -85,7 +91,7 @@ WebOSWindow {
 
     MouseArea {
         anchors.fill: parent
-        onClicked: dashboard.openRequested()
+        onClicked: if (!dashboard.locked) dashboard.openRequested()
     }
 
     Cover {
@@ -155,6 +161,7 @@ WebOSWindow {
         }
         IconButton {
             image: dashboard.player && dashboard.player.playing ? "pause" : "play"
+            busy: !!(dashboard.player && dashboard.player.waiting)
             label: dashboard.player && dashboard.player.playing ? "Pause" : "Play"
             iconSize: Units.gu(2.6)
             accent: dashboard.theme.accent

@@ -48,6 +48,10 @@ Item {
 
     // --- playback state ----------------------------------------------------
     readonly property bool playing: active.isPlaying
+    // Asked to play and nothing heard yet: a stream resolving, connecting
+    // or buffering (internet radio takes a few seconds), or stalled. The
+    // play buttons show a spinner meanwhile; a tap on it pauses.
+    readonly property bool waiting: _wantPlay && _awaiting && !!current
     readonly property real position: _seekingTo >= 0 ? _seekingTo : active.position
     readonly property real duration: active.duration > 0 ? active.duration : (current ? (current.duration || 0) : 0)
     readonly property bool seekable: active.seekable
@@ -125,6 +129,10 @@ Item {
     // A start asked for before the track was loaded (seek to resume point).
     property real _pendingSeek: -1
     property bool _wantPlay: false
+    // Set when playing is asked for, cleared once the position moves (or
+    // the tuner is on): what waiting is made of.
+    property bool _awaiting: false
+    property real _awaitFrom: 0
     // Where a track that stopped by itself is played again from, -1 for
     // none, and how often that has been tried. _playingAt is where it last
     // played: Qt's FFmpeg backend is back at 0 before it says Stopped.
@@ -201,6 +209,7 @@ Item {
             return;
         }
         _wantPlay = true;
+        _await();
         _lastTick = Date.now();
         if (_resumeAt >= 0 && active.playbackState === MediaPlayer.StoppedState) {
             resumeTimer.stop();
@@ -212,6 +221,7 @@ Item {
 
     function pause() {
         _wantPlay = false;
+        _awaiting = false;
         _cancelResume();
         active.pause();
         if (_fadingOut)
@@ -219,8 +229,15 @@ Item {
         _saveBookmark();
     }
 
+    // Playing asked for: waiting until the position moves from where it is.
+    function _await() {
+        _awaiting = true;
+        _awaitFrom = active.position;
+        awaitGiveUp.restart();
+    }
+
     function toggle() {
-        if (playing)
+        if (playing || waiting)
             pause();
         else
             play();
@@ -448,6 +465,8 @@ Item {
         _cancelResume();
         _playingAt = 0;
         _wantPlay = andPlay;
+        if (andPlay)
+            _await();
         if (resolving) {
             _resolveAndLoad(track, serial);
         } else {
@@ -511,8 +530,10 @@ Item {
             player.active.load(track.path, url);
             player._pendingSeek = at > 0 ? at : -1;
             player._wantPlay = andPlay;
-            if (andPlay)
+            if (andPlay) {
+                player._await();
                 player.active.play();
+            }
             report("");
         }, format);
     }
@@ -837,6 +858,24 @@ Item {
         onTriggered: if (player.playing) player._cancelResume()
     }
 
+    // A stream whose position never moves (a backend that keeps 0 for a
+    // live stream) must not spin for ever.
+    Timer {
+        id: awaitGiveUp
+        interval: 20000
+        onTriggered: player._awaiting = false
+    }
+
+    // A stream that stalls to buffer again is waited for again.
+    Connections {
+        target: player.active
+        ignoreUnknownSignals: true    // Spotify and FM have no mediaStatus
+        function onMediaStatusChanged() {
+            if (player._wantPlay && player.active.mediaStatus === MediaPlayer.StalledMedia)
+                player._await();
+        }
+    }
+
     // Until the engine reports the new position, show where the user let go.
     Timer {
         id: seekSettle
@@ -850,6 +889,9 @@ Item {
         target: player.active
         function onPlaybackStateChanged() {
             if (player.active.playbackState === MediaPlayer.PlayingState) {
+                // The tuner has no position: on is heard.
+                if (player.active === fmEngine)
+                    player._awaiting = false;
                 player._failures = 0;
                 player._failedPath = "";
                 player._lastTick = Date.now();
@@ -864,6 +906,11 @@ Item {
         function onPositionChanged() {
             if (player.active.isPlaying && player.active.position > 0)
                 player._playingAt = player.active.position;
+            if (player._awaiting && player.active.isPlaying
+                    && player.active.mediaStatus !== MediaPlayer.LoadingMedia
+                    && player.active.mediaStatus !== MediaPlayer.StalledMedia
+                    && player.active.position !== player._awaitFrom)
+                player._awaiting = false;
         }
         function onSeekableChanged() {
             // Qt's FFmpeg backend says seekable a moment before it can

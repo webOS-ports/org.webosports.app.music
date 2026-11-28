@@ -712,6 +712,45 @@ Item {
             verify(resolves.length >= 2);
         }
 
+        // Internet radio takes a few seconds to start: waiting from the tap
+        // until the stream is heard (resolving, then loading), a tap meanwhile
+        // pauses, and a pause or the sound ends it.
+        function test_waiting_until_the_stream_is_heard() {
+            var held = null;
+            var resolver = player.urlResolver;
+            player.urlResolver = function(track, done) { held = done; };
+            var url = fileUrl("Various/Summer Mix/01 Ana Ray - Sun.ogg");
+            player.playTracks([{ path: "jamendo:slow", title: "Slow", remote: true }], 0, false);
+            verify(held !== null);
+            verify(player.waiting);
+            verify(!player.playing);
+            held(url, "", null, "");
+            verify(player.waiting);
+            tryVerify(function() { return player.playing && player.position > 0; }, 5000);
+            tryVerify(function() { return !player.waiting; }, 2000);
+
+            // Picked again and tapped while it resolves: paused, no spinner,
+            // and the late answer does not start it.
+            held = null;
+            player.urlResolver = function(track, done) { held = done; };
+            player.playTracks([{ path: "jamendo:slow2", title: "Slow 2", remote: true }], 0, false);
+            verify(player.waiting);
+            player.toggle();
+            verify(!player.waiting);
+            held(url, "", null, "");
+            wait(300);
+            verify(!player.playing);
+            verify(!player.waiting);
+
+            // Played from a pause: waiting again until the position moves.
+            player.play();
+            verify(player.waiting);
+            tryVerify(function() { return player.playing && !player.waiting; }, 5000);
+            player.pause();
+            verify(!player.waiting);
+            player.urlResolver = resolver;
+        }
+
         function test_unresolvable_track_is_skipped() {
             root.answers["POST /provider/jamendo/resolve"] = function(body) {
                 if (body.trackId === "bad")

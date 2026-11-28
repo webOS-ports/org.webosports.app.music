@@ -27,9 +27,16 @@
  *
  * cardSeen: a restored queue exists before the card first comes to the
  * front, and paused music must not put up a dashboard during the launch.
+ *
+ * locked: the screen is locked. The card is then behind the lock screen and
+ * does not count as in front: the dashboard is the lock screen's controls,
+ * as the legacy app put its dashboard up when the display went off with Now
+ * Playing in front (and Jukie kept its own up), both clickable when locked.
  */
 function wanted(state) {
-    if (!state.hasQueue || state.cardActive || state.exhibition || state.dismissed)
+    if (!state.hasQueue || state.exhibition || state.dismissed)
+        return false;
+    if (state.cardActive && !state.locked)
         return false;
     return state.playing || state.cardSeen;
 }
