@@ -139,6 +139,7 @@ Rectangle {
         IconButton {
             objectName: "miniPlayPause"
             image: mini.player && mini.player.playing ? "pause" : "play"
+            busy: !!(mini.player && mini.player.waiting)
             label: mini.player && mini.player.playing ? "Pause" : "Play"
             accent: mini.theme.accent
             onClicked: mini.player.toggle()

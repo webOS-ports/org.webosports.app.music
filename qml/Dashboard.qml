@@ -155,6 +155,7 @@ WebOSWindow {
         }
         IconButton {
             image: dashboard.player && dashboard.player.playing ? "pause" : "play"
+            busy: !!(dashboard.player && dashboard.player.waiting)
             label: dashboard.player && dashboard.player.playing ? "Pause" : "Play"
             iconSize: Units.gu(2.6)
             accent: dashboard.theme.accent

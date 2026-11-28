@@ -169,6 +169,7 @@ Rectangle {
                 width: view.u * 7
                 height: width
                 image: view.player && view.player.playing ? "pause" : "play"
+                busy: !!(view.player && view.player.waiting)
                 label: view.player && view.player.playing ? "Pause" : "Play"
                 iconSize: view.u * 3.2
                 filled: true
